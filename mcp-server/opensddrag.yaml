@@ -1,0 +1,40 @@
+version: "1"
+project: default
+
+sdd:
+  artifact_types:
+    - proposal
+    - spec
+    - change
+    - task
+    - design
+
+  spec_sections_required:
+    - Purpose
+    - Requirements
+
+  task_max_hours: 4
+
+harness:
+  memory:
+    semantic:
+      table: artifacts
+      embedding_model: all-MiniLM-L6-v2
+      dimensions: 384
+    episodic:
+      table: execution_traces
+    working:
+      table: sessions
+
+  skills:
+    global_seeds:
+      - sdd:propose
+      - sdd:spec
+      - sdd:design
+      - sdd:tasks
+      - sdd:apply
+      - sdd:full-flow
+
+  protocols:
+    transport: stdio
+    server_name: opensddrag

@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "opensddrag": {
+      "type": "http",
+      "url": "http://localhost:8000/sse"
+    }
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "mcp": {
+    "opensddrag": {
+      "type": "remote",
+      "url": "http://localhost:8000/sse",
+      "enabled": true
+    }
+  }
+}

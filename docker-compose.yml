@@ -1,0 +1,32 @@
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: opensddrag
+      POSTGRES_PASSWORD: opensddrag
+      POSTGRES_DB: opensddrag
+    ports:
+      - "54326:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U opensddrag -d opensddrag"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  mcp:
+    build: ./mcp-server
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://opensddrag:opensddrag@db:5432/opensddrag
+      EMBEDDING_MODEL: all-MiniLM-L6-v2
+      OPENSDDRAG_PROJECT: default
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pgdata:
