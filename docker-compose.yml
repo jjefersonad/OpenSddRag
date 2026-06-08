@@ -2,27 +2,29 @@ services:
   db:
     image: pgvector/pgvector:pg16
     environment:
-      POSTGRES_USER: opensddrag
-      POSTGRES_PASSWORD: opensddrag
-      POSTGRES_DB: opensddrag
+      POSTGRES_USER: ${POSTGRES_USER:-opensddrag}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-opensddrag}
+      POSTGRES_DB: ${POSTGRES_DB:-opensddrag}
     ports:
-      - "54326:5432"
+      - "${DB_PORT:-54326}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U opensddrag -d opensddrag"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-opensddrag} -d ${POSTGRES_DB:-opensddrag}"]
       interval: 5s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
 
   mcp:
     build: ./mcp-server
     ports:
-      - "8000:8000"
+      - "${MCP_PORT:-8000}:8000"
     environment:
-      DATABASE_URL: postgresql://opensddrag:opensddrag@db:5432/opensddrag
-      EMBEDDING_MODEL: all-MiniLM-L6-v2
-      OPENSDDRAG_PROJECT: default
+      DATABASE_URL: ${DATABASE_URL:-postgresql://${POSTGRES_USER:-opensddrag}:${POSTGRES_PASSWORD:-opensddrag}@db:5432/${POSTGRES_DB:-opensddrag}}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-all-MiniLM-L6-v2}
+      OPENSDDRAG_PROJECT: ${OPENSDDRAG_PROJECT:-default}
+      AUTH_ENABLED: ${AUTH_ENABLED:-true}
     depends_on:
       db:
         condition: service_healthy
