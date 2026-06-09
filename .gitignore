@@ -47,3 +47,6 @@ Thumbs.db
 
 # OpenCode
 .opencode/
+
+openspec/
+.claude/
