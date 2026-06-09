@@ -1,70 +1,70 @@
 # OpenSddRag
 
-**Spec-Driven Development (SDD) + Harness** — servidor MCP com memória semântica persistente e fluxo de trabalho estruturado para desenvolvimento de software disciplinado.
+**Spec-Driven Development (SDD) + Harness** — MCP server with persistent semantic memory and a structured workflow for disciplined software development.
 
 ---
 
-## O que é o OpenSddRag
+## What is OpenSddRag
 
-O OpenSddRag entrega aos agentes de IA (como o Claude Code) uma **memória persistente** e um **fluxo de trabalho guiado por especificações**. Em vez de o agente trabalhar de forma improvisada, cada mudança passa por fases bem definidas: proposta → spec → design → tasks → implementação → verificação → archive.
+OpenSddRag gives AI agents (such as Claude Code) **persistent memory** and a **spec-driven workflow**. Instead of the agent working ad-hoc, every change flows through well-defined phases: propose → spec → design → tasks → apply → verify → archive.
 
-### Dois pacotes independentes
+### Two independent packages
 
-| Pacote | Tecnologia | Função |
+| Package | Technology | Role |
 |---|---|---|
-| `mcp-server/` | Python + PostgreSQL/pgvector | Servidor MCP central: armazena artefatos, traces e contexto de sessão |
-| `client/` | Node.js | CLI que conecta qualquer projeto a um servidor MCP em execução |
+| `mcp-server/` | Python + PostgreSQL/pgvector | Core MCP server: stores artifacts, traces, and session context |
+| `client/` | Node.js | CLI that connects any project to a running MCP server |
 
-### Conceito SDD (Spec-Driven Development)
+### SDD concept (Spec-Driven Development)
 
-Todo trabalho segue um ciclo de artefatos em ordem de dependência:
+All work follows an artifact lifecycle in dependency order:
 
 ```
 proposal → spec(s) → design → tasks → apply → verify → sync deltas → archive
 ```
 
-Cada artefato vive no banco de dados com embedding vetorial, permitindo busca semântica sobre o histórico de decisões do projeto.
+Each artifact lives in the database with a vector embedding, enabling semantic search over the project's decision history.
 
 ---
 
-## Arquitetura
+## Architecture
 
-### Três camadas de memória
+### Three memory layers
 
-| Tabela | Tipo | Descrição |
+| Table | Type | Description |
 |---|---|---|
-| `artifacts` | Memória semântica | Propostas, specs, designs, tasks — cada uma com embedding `vector(384)` |
-| `execution_traces` | Memória episódica | Log de ações do agente com embeddings para recall |
-| `sessions` | Contexto de trabalho | IDs de artefatos ativos + JSON livre por projeto |
-| `skills` | Templates SDD | Globais (`project_id IS NULL`) ou por projeto |
-| `projects` | Registro multi-tenant | Projetos cadastrados no sistema |
-| `artifact_relationships` | Grafo de dependências | Links entre artefatos (`depends_on`, `implements`, `relates_to`) |
+| `artifacts` | Semantic memory | Proposals, specs, designs, tasks — each with a `vector(384)` embedding |
+| `execution_traces` | Episodic memory | Agent action log with embeddings for recall |
+| `sessions` | Working context | Active artifact IDs + free-form JSON per project |
+| `skills` | SDD templates | Global (`project_id IS NULL`) or project-scoped |
+| `projects` | Multi-tenant registry | Projects registered in the system |
+| `artifact_relationships` | Dependency graph | Links between artifacts (`depends_on`, `implements`, `relates_to`) |
 
-Todos os vetores usam índices HNSW (`vector_cosine_ops`). Embeddings de 384 dimensões via `all-MiniLM-L6-v2`.
-
----
-
-## Pré-requisitos
-
-- **Docker** e **Docker Compose** (para banco de dados e servidor MCP em contêiner)
-- **Python 3.11+** e **[uv](https://github.com/astral-sh/uv)** (para rodar o `mcp-server` localmente)
-- **Node.js 18+** e **npm** (para o `client`)
+All vectors use HNSW indexes (`vector_cosine_ops`). Embeddings are 384 dimensions via `all-MiniLM-L6-v2`.
 
 ---
 
-## Início Rápido
+## Prerequisites
 
-O jeito mais simples de subir o banco e o servidor MCP juntos:
+- **Docker** and **Docker Compose** (for running the database and MCP server in containers)
+- **Python 3.11+** and **[uv](https://github.com/astral-sh/uv)** (to run `mcp-server` locally)
+- **Node.js 18+** and **npm** (for the `client`)
+
+---
+
+## Quick Start
+
+The simplest way to bring up the database and MCP server together:
 
 ```bash
 docker compose up -d
 ```
 
-Isso inicia:
-- **PostgreSQL/pgvector** na porta `54326` (mapeada do contêiner)
-- **Servidor MCP** (modo SSE) na porta `8000`
+This starts:
+- **PostgreSQL/pgvector** on port `54326` (mapped from the container)
+- **MCP server** (SSE mode) on port `8000`
 
-Verifique que estão rodando:
+Verify they are running:
 
 ```bash
 curl http://localhost:8000/health
@@ -72,109 +72,109 @@ curl http://localhost:8000/health
 
 ---
 
-## Configuração de Ambiente
+## Environment Configuration
 
-Antes de rodar o `mcp-server` localmente (fora do Docker), copie o arquivo de exemplo:
+Before running `mcp-server` locally (outside Docker), copy the example env file:
 
 ```bash
 cp mcp-server/.env.example mcp-server/.env
 ```
 
-Variáveis principais em `mcp-server/.env`:
+Key variables in `mcp-server/.env`:
 
-| Variável | Padrão | Descrição |
+| Variable | Default | Description |
 |---|---|---|
-| `DATABASE_URL` | `postgresql://opensddrag:opensddrag@localhost:54326/opensddrag` | String de conexão com o banco |
-| `EMBEDDING_MODEL` | `all-MiniLM-L6-v2` | Modelo de embedding (sentence-transformers) |
-| `OPENSDDRAG_PROJECT` | `default` | Slug do projeto ativo |
-| `AUTH_ENABLED` | `true` | Habilita autenticação no modo SSE |
+| `DATABASE_URL` | `postgresql://opensddrag:opensddrag@localhost:54326/opensddrag` | Database connection string |
+| `EMBEDDING_MODEL` | `all-MiniLM-L6-v2` | Embedding model (sentence-transformers) |
+| `OPENSDDRAG_PROJECT` | `default` | Active project slug |
+| `AUTH_ENABLED` | `true` | Enables authentication in SSE mode |
 
 ---
 
 ## mcp-server (Python)
 
-### Instalação
+### Installation
 
 ```bash
 cd mcp-server
 
-# Instala o pacote e dependências
+# Install the package and dependencies
 uv pip install -e .
 
-# Roda as migrations e faz seed das skills globais SDD
+# Run migrations and seed global SDD skills
 opensddrag init
 ```
 
-### Execução local (modo stdio)
+### Run locally (stdio mode)
 
-O Claude Code pode spawnar o servidor diretamente como processo filho:
+Claude Code can spawn the server directly as a child process:
 
 ```bash
 opensddrag server start
 ```
 
-### Execução como servidor HTTP (modo SSE)
+### Run as HTTP server (SSE mode)
 
-Para uso remoto ou via Docker:
+For remote use or via Docker:
 
 ```bash
 opensddrag server start --transport sse --port 8000
 ```
 
-Endpoints disponíveis no modo SSE:
+Available endpoints in SSE mode:
 - `GET /health` — health check
-- `GET /sse` — stream SSE para o cliente MCP
-- `POST /messages/` — envio de mensagens MCP
-- `GET /api/projects` — lista projetos (usado pelo client Node.js)
-- `POST /api/projects` — cria projeto (usado pelo client Node.js)
+- `GET /sse` — SSE stream for the MCP client
+- `POST /messages/` — MCP message endpoint
+- `GET /api/projects` — list projects (used by the Node.js client)
+- `POST /api/projects` — create a project (used by the Node.js client)
 
-### Testes
+### Tests
 
 ```bash
 cd mcp-server
 
-pytest                          # todos os testes
-pytest tests/test_foo.py        # arquivo específico
-pytest -k "test_nome"           # teste por nome
+pytest                          # all tests
+pytest tests/test_foo.py        # specific file
+pytest -k "test_name"           # test by name
 ```
 
 ---
 
 ## client (Node.js)
 
-O client conecta qualquer projeto de software a um servidor MCP em execução, instalando os arquivos necessários para o Claude Code se comunicar com o OpenSddRag.
+The client connects any software project to a running MCP server by installing the files Claude Code needs to communicate with OpenSddRag.
 
-### Instalação
+### Installation
 
 ```bash
 cd client
 npm install
 ```
 
-### Conectar um projeto ao servidor MCP
+### Connect a project to the MCP server
 
-Execute a partir da **raiz do projeto alvo** (não deste repositório):
+Run from the **root of the target project** (not this repository):
 
 ```bash
 node bin/opensddrag.js init [--server http://localhost:8000] [--project <slug>] [--yes]
 ```
 
-Opções:
-- `--server` — URL do servidor MCP (padrão: `http://localhost:8000`)
-- `--project` — slug do projeto a registrar (padrão: nome do diretório)
-- `--yes` — aceita todos os prompts automaticamente
+Options:
+- `--server` — MCP server URL (default: `http://localhost:8000`)
+- `--project` — project slug to register (default: directory name)
+- `--yes` — accept all prompts automatically
 
-### O que o `init` instala no projeto alvo
+### What `init` installs in the target project
 
-| Arquivo/Pasta | Descrição |
+| File/Folder | Description |
 |---|---|
-| `.mcp.json` | Configura o Claude Code para conectar ao servidor MCP via SSE |
-| `.claude/commands/opsr/*.md` | Slash commands `/opsr:*` para o Claude Code |
-| `.claude/skills/opensddrag-*/SKILL.md` | Skills do OpenSddRag para o Claude Code |
-| `.agents/skills/opensddrag-*/SKILL.md` | Skills para outros agentes compatíveis |
-| `CLAUDE.md` (seção adicionada) | Instrui o Claude Code sobre o projeto OpenSddRag |
+| `.mcp.json` | Configures Claude Code to connect to the MCP server via SSE |
+| `.claude/commands/opsr/*.md` | `/opsr:*` slash commands for Claude Code |
+| `.claude/skills/opensddrag-*/SKILL.md` | OpenSddRag skills for Claude Code |
+| `.agents/skills/opensddrag-*/SKILL.md` | Skills for other compatible agents |
+| `CLAUDE.md` (section appended) | Instructs Claude Code about the OpenSddRag project |
 
-### Verificar status da conexão
+### Check connection status
 
 ```bash
 node bin/opensddrag.js status
@@ -182,13 +182,13 @@ node bin/opensddrag.js status
 
 ---
 
-## Transportes MCP
+## MCP Transports
 
-### stdio (uso local)
+### stdio (local use)
 
-O Claude Code spawna o `opensddrag server start` como processo filho. A comunicação acontece via stdin/stdout. Ideal para desenvolvimento local onde o Claude Code e o servidor rodam na mesma máquina.
+Claude Code spawns `opensddrag server start` as a child process. Communication happens over stdin/stdout. Ideal for local development where Claude Code and the server run on the same machine.
 
-Configurado via `.mcp.json` no projeto alvo (gerado pelo `client init`):
+Configured via `.mcp.json` in the target project (generated by `client init`):
 
 ```json
 {
@@ -202,11 +202,11 @@ Configurado via `.mcp.json` no projeto alvo (gerado pelo `client init`):
 }
 ```
 
-### SSE (uso remoto ou Docker)
+### SSE (remote or Docker)
 
-O servidor expõe endpoints HTTP. Adequado quando o servidor MCP roda em Docker, em outra máquina, ou deve ser compartilhado por múltiplos desenvolvedores.
+The server exposes HTTP endpoints. Suitable when the MCP server runs in Docker, on another machine, or is shared across multiple developers.
 
-Configurado via `.mcp.json` apontando para o endpoint SSE:
+Configured via `.mcp.json` pointing to the SSE endpoint:
 
 ```json
 {
@@ -221,105 +221,105 @@ Configurado via `.mcp.json` apontando para o endpoint SSE:
 
 ---
 
-## Fluxo SDD
+## SDD Flow
 
-O fluxo completo de desenvolvimento orientado a spec:
+The complete spec-driven development workflow:
 
-| Fase | Artefato | Descrição |
+| Phase | Artifact | Description |
 |---|---|---|
-| **propose** | `proposal.md` | Define o que e por que — problema, mudanças, capabilities afetadas |
-| **spec** | `specs/<cap>/spec.md` | Define o que o sistema deve fazer — requisitos testáveis com cenários WHEN/THEN |
-| **design** | `design.md` | Define como implementar — decisões técnicas, trade-offs, riscos |
-| **tasks** | `tasks.md` | Lista de tarefas com checkboxes rastreáveis |
-| **apply** | (código) | Implementação das tasks, marcando `[ ]` → `[x]` conforme avança |
-| **verify** | (testes) | Valida que os cenários da spec foram atendidos |
-| **sync deltas** | (delta specs) | Sincroniza specs modificadas de volta à base (`openspec/specs/`) |
-| **archive** | (finalização) | Fecha a mudança, registra no histórico |
+| **propose** | `proposal.md` | Defines what and why — problem, changes, affected capabilities |
+| **spec** | `specs/<cap>/spec.md` | Defines what the system should do — testable requirements with WHEN/THEN scenarios |
+| **design** | `design.md` | Defines how to implement — technical decisions, trade-offs, risks |
+| **tasks** | `tasks.md` | Trackable task list with checkboxes |
+| **apply** | (code) | Implement tasks, marking `[ ]` → `[x]` as you go |
+| **verify** | (tests) | Validate that spec scenarios are satisfied |
+| **sync deltas** | (delta specs) | Merge modified specs back to the base (`openspec/specs/`) |
+| **archive** | (finalization) | Close the change, record in history |
 
 ### Slash Commands
 
-Instalados pelo `client init` em `.claude/commands/opsr/`:
+Installed by `client init` into `.claude/commands/opsr/`:
 
-| Comando | Fase | Descrição |
+| Command | Phase | Description |
 |---|---|---|
-| `/opsr:propose` | Proposta | Cria a proposta e guia pela definição da mudança |
-| `/opsr:spec` | Especificação | Gera as specs de capability baseadas na proposta |
-| `/opsr:design` | Design | Cria o documento de design técnico |
-| `/opsr:tasks` | Planejamento | Quebra o design em tasks implementáveis |
-| `/opsr:apply` | Implementação | Implementa tasks sequencialmente, marcando progresso |
-| `/opsr:verify` | Verificação | Valida os cenários das specs contra o código implementado |
-| `/opsr:sync` | Sincronização | Mescla delta specs de volta às specs base |
-| `/opsr:archive` | Arquivo | Finaliza e arquiva a mudança |
-| `/opsr:explore` | Exploração | Investiga problemas antes de propor uma mudança |
-| `/opsr:continue` | Continuação | Retoma uma mudança em andamento |
-| `/opsr:status` | Status | Mostra o estado atual de todas as mudanças ativas |
-| `/opsr:flow` | Fluxo | Guia interativo pelo próximo passo do fluxo SDD |
-| `/opsr:search` | Busca | Busca semântica em artefatos e traces |
+| `/opsr:propose` | Propose | Creates the proposal and guides through change definition |
+| `/opsr:spec` | Spec | Generates capability specs based on the proposal |
+| `/opsr:design` | Design | Creates the technical design document |
+| `/opsr:tasks` | Planning | Breaks the design into implementable tasks |
+| `/opsr:apply` | Implementation | Implements tasks sequentially, tracking progress |
+| `/opsr:verify` | Verification | Validates spec scenarios against implemented code |
+| `/opsr:sync` | Sync | Merges delta specs back into base specs |
+| `/opsr:archive` | Archive | Finalizes and archives the change |
+| `/opsr:explore` | Explore | Investigates problems before proposing a change |
+| `/opsr:continue` | Continue | Resumes an in-progress change |
+| `/opsr:status` | Status | Shows current state of all active changes |
+| `/opsr:flow` | Flow | Interactive guide through the next SDD step |
+| `/opsr:search` | Search | Semantic search over artifacts and traces |
 
 ---
 
-## Referência de Comandos CLI
+## CLI Command Reference
 
-Todos os comandos requerem que o banco de dados esteja acessível.
+All commands require the database to be reachable.
 
-### Projetos
+### Projects
 
 ```bash
-opensddrag project list              # lista todos os projetos
-opensddrag project create <slug>     # cria um novo projeto
-opensddrag project show <slug>       # exibe detalhes de um projeto
+opensddrag project list              # list all projects
+opensddrag project create <slug>     # create a new project
+opensddrag project show <slug>       # show project details
 ```
 
 ### Specs
 
 ```bash
-opensddrag spec list                 # lista specs do projeto ativo
-opensddrag spec create <nome>        # cria uma spec
-opensddrag spec show <id>            # exibe uma spec específica
+opensddrag spec list                 # list specs for the active project
+opensddrag spec create <name>        # create a spec
+opensddrag spec show <id>            # show a specific spec
 ```
 
 ### Tasks
 
 ```bash
-opensddrag task list                 # lista tasks do projeto ativo
-opensddrag task create <descrição>   # cria uma task
-opensddrag task show <id>            # exibe uma task específica
+opensddrag task list                 # list tasks for the active project
+opensddrag task create <description> # create a task
+opensddrag task show <id>            # show a specific task
 ```
 
 ### Skills
 
 ```bash
-opensddrag skill list                # lista skills disponíveis
-opensddrag skill create <nome>       # cria uma skill
-opensddrag skill suggest <query>     # sugere skills relevantes para uma query
+opensddrag skill list                # list available skills
+opensddrag skill create <name>       # create a skill
+opensddrag skill suggest <query>     # suggest skills relevant to a query
 ```
 
-### Busca Semântica
+### Semantic Search
 
 ```bash
-opensddrag search semantic "<query>" # busca artefatos por similaridade semântica
+opensddrag search semantic "<query>" # search artifacts by semantic similarity
 ```
 
-### Sessão e Workspace
+### Session and Workspace
 
 ```bash
-opensddrag session show              # exibe o contexto de sessão do projeto ativo
-opensddrag workspace init            # inicializa o workspace do projeto ativo
+opensddrag session show              # show the active project's session context
+opensddrag workspace init            # initialize the active project's workspace
 ```
 
 ### Import OpenSpec
 
-Importa artefatos de planejamento de um projeto OpenSpec para o OpenSddRag:
+Import planning artifacts from an OpenSpec project into OpenSddRag:
 
 ```bash
-opensddrag import openspec /caminho/para/projeto              # importa todas as mudanças e specs globais
-opensddrag import openspec /caminho/para/projeto --change add-auth   # importa apenas uma mudança
-opensddrag import openspec /caminho/para/projeto --force             # re-importa e re-embeda existentes
-opensddrag import openspec /caminho/para/projeto --project meu-slug  # especifica o projeto de destino
+opensddrag import openspec /path/to/project              # import all changes and global specs
+opensddrag import openspec /path/to/project --change add-auth   # import a single change only
+opensddrag import openspec /path/to/project --force             # re-import and re-embed existing
+opensddrag import openspec /path/to/project --project my-slug   # specify the target project
 ```
 
 ---
 
-## Licença
+## License
 
-Consulte o arquivo `LICENSE` na raiz do repositório.
+See the `LICENSE` file at the repository root.

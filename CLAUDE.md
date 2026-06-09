@@ -134,3 +134,9 @@ proposal → spec(s) → design → task(s) → [apply] → [verify] → [sync d
 Commands are installed to `.claude/commands/opsr/` and invoked as `/opsr:<name>` inside Claude Code. Each command file is a structured prompt that drives the AI through a specific SDD phase using the MCP tools. The templates live in `client/src/templates/commands/index.js`.
 
 Available commands: `propose`, `spec`, `design`, `tasks`, `apply`, `verify`, `sync`, `archive`, `explore`, `continue`, `status`, `flow`, `search`.
+
+## Language Convention
+
+All project-level text **must be written in English**: source code, inline comments, SQL migration comments, documentation files (`README.md`, `docs/`, `CLAUDE.md`), CLI help strings, and planning artifacts inside `openspec/`.
+
+Database-persisted content — artifacts (proposals, specs, designs, tasks), execution traces, skills, and session context — is **language-agnostic**. Store it exactly as the user writes it. Never translate, reject, or modify content based on detected language.

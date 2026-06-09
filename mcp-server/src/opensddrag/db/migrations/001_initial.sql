@@ -2,7 +2,7 @@ CREATE EXTENSION IF NOT EXISTS vector;
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- ============================================================
--- PROJETOS (registro central — múltiplos projetos)
+-- PROJECTS (central registry — multi-tenant)
 -- ============================================================
 CREATE TABLE IF NOT EXISTS projects (
     id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -50,7 +50,7 @@ CREATE TABLE IF NOT EXISTS artifact_relationships (
 );
 
 -- ============================================================
--- MEMORY: Episodic (traces de execução — por projeto)
+-- MEMORY: Episodic (execution traces — per project)
 -- ============================================================
 CREATE TABLE IF NOT EXISTS execution_traces (
     id             UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -66,7 +66,7 @@ CREATE TABLE IF NOT EXISTS execution_traces (
 );
 
 -- ============================================================
--- MEMORY: Working Context (sessões ativas — por projeto)
+-- MEMORY: Working Context (active sessions — per project)
 -- ============================================================
 CREATE TABLE IF NOT EXISTS sessions (
     id                  UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -94,7 +94,7 @@ CREATE TABLE IF NOT EXISTS skills (
 );
 
 -- ============================================================
--- ÍNDICES
+-- INDEXES
 -- ============================================================
 CREATE INDEX IF NOT EXISTS idx_artifacts_embedding ON artifacts USING hnsw (embedding vector_cosine_ops);
 CREATE INDEX IF NOT EXISTS idx_traces_embedding    ON execution_traces USING hnsw (embedding vector_cosine_ops);
