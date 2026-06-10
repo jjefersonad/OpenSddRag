@@ -23,18 +23,18 @@ Database runs on `localhost:54326` (pgvector/pg16). Copy `mcp-server/.env.exampl
 
 **Setup** (from `mcp-server/`):
 ```bash
-uv pip install -e .          # install with dependencies
-opensddrag init              # run migrations + seed global SDD skills
+uv pip install -e .                # install with dependencies
+opensddrag-server init             # run migrations + seed global SDD skills
 ```
 
 **Run locally** (stdio transport — Claude Code spawns the process directly):
 ```bash
-opensddrag server start
+opensddrag-server server start
 ```
 
 **Run as HTTP server** (SSE transport):
 ```bash
-opensddrag server start --transport sse --port 8000
+opensddrag-server server start --transport sse --port 8000
 ```
 
 **Tests** (from `mcp-server/`):
@@ -46,19 +46,19 @@ pytest -k "test_name"        # run a single test
 
 **CLI commands** (all require the database to be reachable):
 ```bash
-opensddrag project list/create/show
-opensddrag spec list/create/show
-opensddrag task list/create/show
-opensddrag skill list/create/suggest
-opensddrag search semantic <query>
-opensddrag session show
-opensddrag workspace init
+opensddrag-server project list/create/show
+opensddrag-server spec list/create/show
+opensddrag-server task list/create/show
+opensddrag-server skill list/create/suggest
+opensddrag-server search semantic <query>
+opensddrag-server session show
+opensddrag-server workspace init
 
 # Import OpenSpec planning artifacts into OpenSddRag
-opensddrag import openspec /path/to/project              # import all changes + global specs
-opensddrag import openspec /path/to/project --change add-auth  # single change only
-opensddrag import openspec /path/to/project --force      # re-import and re-embed existing
-opensddrag import openspec /path/to/project --project myslug   # specify target project
+opensddrag-server import openspec /path/to/project              # import all changes + global specs
+opensddrag-server import openspec /path/to/project --change add-auth  # single change only
+opensddrag-server import openspec /path/to/project --force      # re-import and re-embed existing
+opensddrag-server import openspec /path/to/project --project myslug   # specify target project
 ```
 
 Config is loaded from environment variables or `.env` via `pydantic-settings` (`src/opensddrag/config.py`). Key variables: `DATABASE_URL`, `EMBEDDING_MODEL`, `OPENSDDRAG_PROJECT`.
@@ -88,7 +88,7 @@ src/opensddrag/
   mcp/server.py           — MCP tool + resource definitions and dispatch
   cli/main.py             — typer CLI root, wires sub-typers
   cli/_seeds.py           — seeds global SDD skills on init
-  cli/server.py           — `opensddrag server start` (stdio or SSE)
+  cli/server.py           — `opensddrag-server server start` (stdio or SSE)
   db/connection.py        — async psycopg connection pool + run_migrations()
   db/migrations/001_initial.sql — schema (pgvector HNSW indexes)
   db/repository.py        — artifact CRUD + semantic search + relationships
@@ -115,7 +115,7 @@ All vector columns use HNSW indexes (`vector_cosine_ops`). Embeddings are 384-di
 
 ### MCP transports
 
-- **stdio**: Claude Code spawns `opensddrag server start` as a child process. Configured via `.mcp.json` in the client project with `type: "http"` pointing to the SSE endpoint.
+- **stdio**: Claude Code spawns `opensddrag-server server start` as a child process. Configured via `.mcp.json` in the client project with `type: "http"` pointing to the SSE endpoint.
 - **SSE**: Starlette app (`/sse` + `/messages/`) for Docker/remote use. Also exposes a small REST API (`/health`, `GET /api/projects`, `POST /api/projects`) used by the Node.js client.
 
 ### SDD artifact lifecycle
