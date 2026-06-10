@@ -114,15 +114,15 @@ export const initCommand = new Command("init")
     console.log("\n" + chalk.dim("  Will create/update:"));
     if (selectedTools.includes("Claude Code")) {
       console.log(chalk.dim("    .mcp.json                                    — MCP server (type: http)"));
+      console.log(chalk.dim("    .claude/skills/opensddrag-*/SKILL.md         — individual skill per command"));
+      console.log(chalk.dim("    .agents/skills/opensddrag-*/SKILL.md         — individual skill per command"));
+      console.log(chalk.dim("    .claude/commands/opsr/       — slash commands (/opsr:propose, /opsr:apply...)"));
     }
-    console.log(chalk.dim("    .claude/skills/opensddrag-*/SKILL.md         — individual skill per command"));
-    console.log(chalk.dim("    .agents/skills/opensddrag-*/SKILL.md         — individual skill per command"));
     if (selectedTools.includes("OpenCode")) {
-      console.log(chalk.dim("    opencode.json               — MCP server"));
+      console.log(chalk.dim("    opencode.json                — MCP server"));
       console.log(chalk.dim("    .opencode/skills/opensddrag-*/SKILL.md     — OpenCode-native skills"));
-      console.log(chalk.dim("    .opencode/commands/opsr/    — slash commands (/opsr:propose, /opsr:apply...)"));
+      console.log(chalk.dim("    .opencode/commands/opsr/     — slash commands (/opsr:propose, /opsr:apply...)"));
     }
-    console.log(chalk.dim("    .claude/commands/opsr/        — slash commands (/opsr:propose, /opsr:apply...)"));
     console.log(chalk.dim("    CLAUDE.md                    — OpenSddRag section"));
     console.log(chalk.dim(`    Remote: register '${slug}' in central database\n`));
 
@@ -165,57 +165,51 @@ export const initCommand = new Command("init")
       const file = TOOL_WRITERS[tool](cwd, serverUrl, apiKey);
       configured.push(`${tool} → ${file}`);
     }
-    // Individual skill files per command
+    // Individual skill files per command — roots determined by selected tools
     const skills = getSkills(slug, serverUrl);
-    const skillRoots = [
-      join(cwd, ".claude", "skills"),
-      join(cwd, ".agents", "skills"),
-    ];
+    const skillRoots = [];
+    if (selectedTools.includes("Claude Code")) {
+      skillRoots.push(join(cwd, ".claude", "skills"));
+      skillRoots.push(join(cwd, ".agents", "skills"));
+    }
+    if (selectedTools.includes("OpenCode")) {
+      skillRoots.push(join(cwd, ".opencode", "skills"));
+    }
     for (const skill of skills) {
       for (const root of skillRoots) {
         const skillDir = join(root, skill.name);
         mkdirSync(skillDir, { recursive: true });
         writeFileSync(join(skillDir, "SKILL.md"), skill.content);
       }
-      configured.push(`skill → .claude/skills/${skill.name}/SKILL.md`);
-    }
-
-    // Install OpenCode-native skills if OpenCode is selected
-    if (selectedTools.includes("OpenCode")) {
-      const opencodeSkillsRoot = join(cwd, ".opencode", "skills");
-      for (const skill of skills) {
-        const skillDir = join(opencodeSkillsRoot, skill.name);
-        mkdirSync(skillDir, { recursive: true });
-        writeFileSync(join(skillDir, "SKILL.md"), skill.content);
-        configured.push(`skill → .opencode/skills/${skill.name}/SKILL.md`);
+      if (skillRoots.length > 0) {
+        configured.push(`skill → ${skill.name}/SKILL.md (${skillRoots.length} root(s))`);
       }
     }
     console.log(chalk.green("✓"));
     for (const c of configured) console.log(chalk.dim(`    ${c}`));
 
-    // ── 4. Slash commands (.claude/commands/opsr/) ───────────────────────────
+    // ── 4. Slash commands ────────────────────────────────────────────────────
     process.stdout.write(chalk.bold("  4/5 ") + "Writing slash commands... ");
-    const commands = getCommands(slug, serverUrl);
-    for (const cmd of commands) {
-      const cmdDir = join(cwd, ".claude", "commands", cmd.folder);
-      mkdirSync(cmdDir, { recursive: true });
-      writeFileSync(join(cmdDir, `${cmd.name}.md`), cmd.content);
+    let totalCommands = 0;
+    if (selectedTools.includes("Claude Code")) {
+      const commands = getCommands(slug, serverUrl);
+      for (const cmd of commands) {
+        const cmdDir = join(cwd, ".claude", "commands", cmd.folder);
+        mkdirSync(cmdDir, { recursive: true });
+        writeFileSync(join(cmdDir, `${cmd.name}.md`), cmd.content);
+      }
+      totalCommands += commands.length;
     }
-    console.log(chalk.green(`✓ (${commands.length} commands)`));
-    for (const cmd of commands) {
-      console.log(chalk.dim(`    /${cmd.folder}:${cmd.name}`));
-    }
-
-    // Install OpenCode-native commands if OpenCode is selected
     if (selectedTools.includes("OpenCode")) {
       const opencodeCommands = getOpenCodeCommands(slug, serverUrl);
       for (const cmd of opencodeCommands) {
         const cmdDir = join(cwd, ".opencode", "commands", cmd.folder);
         mkdirSync(cmdDir, { recursive: true });
         writeFileSync(join(cmdDir, `${cmd.name}.md`), cmd.content);
-        configured.push(`command → .opencode/commands/${cmd.folder}/${cmd.name}.md`);
       }
+      totalCommands += opencodeCommands.length;
     }
+    console.log(chalk.green(`✓ (${totalCommands} commands)`));
 
     // ── 5. CLAUDE.md ──────────────────────────────────────────────────────────
     process.stdout.write(chalk.bold("  5/5 ") + "Updating CLAUDE.md... ");
