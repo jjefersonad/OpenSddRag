@@ -50,3 +50,7 @@ Thumbs.db
 
 openspec/
 .claude/
+.agents/
+.mcp.json
+opensddrag.yaml
+opencode.json
