@@ -45,6 +45,14 @@ VALID_RULE_CATEGORIES: tuple[str, ...] = (
     "verification",
 )
 VALID_RULE_SEVERITIES: tuple[str, ...] = ("error", "warning", "info")
+# Phase-gate triggers (subset of VALID_RULE_TRIGGERS — 'always' is handled by
+# get_working_context injection, not by the checklist tool).
+VALID_HARNESS_CHECKLIST_TRIGGERS: tuple[str, ...] = (
+    "on_apply",
+    "on_verify",
+    "on_archive",
+    "on_spec",
+)
 
 server = Server("opensddrag")
 
@@ -273,6 +281,27 @@ async def list_tools() -> list[types.Tool]:
                 },
             },
         ),
+        types.Tool(
+            name="get_harness_checklist",
+            description=(
+                "Return all enabled harness rules for a given phase trigger "
+                "(on_apply, on_verify, on_archive, on_spec), ordered by severity "
+                "(error first) then name. Used by /opsr:apply, /opsr:verify, "
+                "/opsr:archive, and /opsr:spec to present a phase-gate checklist."
+            ),
+            inputSchema={
+                "type": "object",
+                "required": ["trigger"],
+                "properties": {
+                    "trigger": {
+                        "type": "string",
+                        "enum": ["on_apply", "on_verify", "on_archive", "on_spec"],
+                        "description": "Phase trigger to fetch rules for.",
+                    },
+                    "project_slug": {"type": "string", "description": "Project slug; defaults to OPENSDDRAG_PROJECT."},
+                },
+            },
+        ),
         # ── SDD Artifacts (Protocols) ─────────────────────────────────────────
         types.Tool(
             name="create_artifact",
@@ -455,7 +484,17 @@ async def _dispatch(name: str, args: dict) -> list[types.TextContent]:
         case "get_working_context":
             project_id = await _resolve_project_id(args.get("project_slug"))
             session = await session_repository.get_or_create(project_id)
-            return _json(session.model_dump())
+            # Eagerly inject trigger="always" rules so every agent session
+            # starts with the project's structural invariants loaded. This is
+            # the single performance-sensitive addition — one indexed lookup
+            # on (project_id, trigger, enabled) — and `rules` is always
+            # present in the response (empty list when none are defined).
+            always_rules = await rule_repository.list_by_trigger(
+                project_id, "always", enabled_only=True
+            )
+            payload = session.model_dump()
+            payload["rules"] = [r.model_dump() for r in always_rules]
+            return _json(payload)
 
         case "update_working_context":
             project_id = await _resolve_project_id(args.get("project_slug"))
@@ -541,6 +580,19 @@ async def _dispatch(name: str, args: dict) -> list[types.TextContent]:
                 enabled_only=bool(args.get("enabled_only", True)),
             )
             return _json([r.model_dump(mode="json") for r in rules])
+
+        case "get_harness_checklist":
+            trigger = args.get("trigger")
+            if trigger not in VALID_HARNESS_CHECKLIST_TRIGGERS:
+                return _text(
+                    f"Error: Invalid trigger '{trigger}'. "
+                    f"Valid values: {', '.join(VALID_HARNESS_CHECKLIST_TRIGGERS)}"
+                )
+            project_id = await _resolve_project_id(args.get("project_slug"))
+            rules = await rule_repository.list_by_trigger(
+                project_id, trigger, enabled_only=True
+            )
+            return _json([r.model_dump() for r in rules])
 
         # SDD Artifacts (Protocols)
         case "create_artifact":
