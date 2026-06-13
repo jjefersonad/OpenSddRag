@@ -39,6 +39,7 @@ Each artifact lives in the database with a vector embedding, enabling semantic s
 | `skills` | SDD templates | Global (`project_id IS NULL`) or project-scoped |
 | `projects` | Multi-tenant registry | Projects registered in the system |
 | `artifact_relationships` | Dependency graph | Links between artifacts (`depends_on`, `implements`, `relates_to`) |
+| `project_rules` | Harness rules | Behavioral constraints enforced per SDD phase, with severity and trigger |
 
 All vectors use HNSW indexes (`vector_cosine_ops`). Embeddings are 384 dimensions via `all-MiniLM-L6-v2`.
 
@@ -318,6 +319,78 @@ Installed by `client init` into `.claude/commands/opsr/`:
 | `/opsr:status` | Status | Shows current state of all active changes |
 | `/opsr:flow` | Flow | Interactive guide through the next SDD step |
 | `/opsr:search` | Search | Semantic search over artifacts and traces |
+
+---
+
+## Harness
+
+The Harness is a rules engine that enforces project-level behavioral constraints across SDD workflow phases. Rules survive context resets — they are stored in the database and injected into every agent session automatically.
+
+### How it works
+
+- Rules are stored per project with a **trigger**, **category**, **severity**, and a plain-English **instruction**
+- Rules with `trigger="always"` are automatically injected into the `rules` key of `get_working_context` — every agent session starts with them loaded, with no extra tool call
+- Phase-specific rules are surfaced as a checklist via `get_harness_checklist` inside `/opsr:apply`, `/opsr:verify`, `/opsr:spec`, and `/opsr:archive` before each gate executes
+
+### Rule fields
+
+| Field | Values | Description |
+|---|---|---|
+| `trigger` | `always`, `on_apply`, `on_verify`, `on_archive`, `on_spec` | When the rule fires |
+| `category` | `architecture`, `naming`, `forbidden`, `doc-sync`, `verification` | Rule family |
+| `severity` | `error`, `warning`, `info` | How the agent should weigh a violation |
+| `instruction` | (free text) | Human-readable guidance the agent must follow |
+| `enabled` | `true` / `false` | `false` soft-deletes the rule |
+
+### MCP tools
+
+| Tool | Description |
+|---|---|
+| `add_rule` | Create or upsert a rule (idempotent on `(project_slug, name)`) |
+| `list_rules` | List active rules; pass `enabled_only=false` to include disabled rules |
+| `get_harness_checklist` | Return enabled rules for a phase trigger, ordered by severity then name |
+
+### `/opsr:harness` command
+
+`opensddrag init` installs an `/opsr:harness` slash command and an `opensddrag-harness` skill into the connected project. Use it to manage rules directly from Claude Code:
+
+```
+/opsr:harness
+```
+
+The command guides the agent through adding, listing, and disabling project rules via the MCP tools above.
+
+### Examples
+
+**Structural invariant (injected into every session):**
+
+```
+add_rule
+  name: "no-direct-db-in-controllers"
+  trigger: "always"
+  category: "architecture"
+  severity: "error"
+  instruction: "Controllers must never import database modules directly. All DB access must go through a repository or service layer."
+```
+
+**Phase gate (checked before every apply):**
+
+```
+add_rule
+  name: "migrations-separate-task"
+  trigger: "on_apply"
+  category: "architecture"
+  severity: "warning"
+  instruction: "Database migrations must be implemented in a dedicated task, separate from application code changes."
+```
+
+**Disable a rule:**
+
+```
+add_rule
+  name: "migrations-separate-task"
+  enabled: false
+```
 
 ---
 
