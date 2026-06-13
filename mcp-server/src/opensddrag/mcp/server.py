@@ -13,6 +13,7 @@ from opensddrag.config import settings
 from opensddrag.db import (
     project_repository,
     repository,
+    rule_repository,
     session_repository,
     skill_repository,
     trace_repository,
@@ -23,9 +24,35 @@ from opensddrag.db.connection import close_pool, run_migrations
 from opensddrag.embedding.service import embed
 from opensddrag.models.artifact import ArtifactCreate, ArtifactStatus, ArtifactType, ArtifactUpdate
 from opensddrag.models.project import ProjectCreate
+from opensddrag.models.rule import RuleCreate, RuleSummary
 from opensddrag.models.skill import SkillCreate, SkillStep
 from opensddrag.models.session import SessionUpdate
 from opensddrag.models.trace import TraceCreate
+
+# ── Rule enum constants (mirror DB CHECK constraints in migration 003) ───────
+VALID_RULE_TRIGGERS: tuple[str, ...] = (
+    "always",
+    "on_apply",
+    "on_verify",
+    "on_archive",
+    "on_spec",
+)
+VALID_RULE_CATEGORIES: tuple[str, ...] = (
+    "architecture",
+    "naming",
+    "forbidden",
+    "doc-sync",
+    "verification",
+)
+VALID_RULE_SEVERITIES: tuple[str, ...] = ("error", "warning", "info")
+# Phase-gate triggers (subset of VALID_RULE_TRIGGERS — 'always' is handled by
+# get_working_context injection, not by the checklist tool).
+VALID_HARNESS_CHECKLIST_TRIGGERS: tuple[str, ...] = (
+    "on_apply",
+    "on_verify",
+    "on_archive",
+    "on_spec",
+)
 
 server = Server("opensddrag")
 
@@ -202,6 +229,76 @@ async def list_tools() -> list[types.Tool]:
                         },
                     },
                     "project_slug": {"type": "string"},
+                },
+            },
+        ),
+        # ── Rules (Harness) ──────────────────────────────────────────────────
+        types.Tool(
+            name="add_rule",
+            description=(
+                "Create or upsert a project rule (idempotent on (project_slug, name)). "
+                "Setting `enabled=false` soft-deletes an existing rule with the same name."
+            ),
+            inputSchema={
+                "type": "object",
+                "required": ["name", "trigger", "category", "instruction"],
+                "properties": {
+                    "name": {"type": "string", "description": "Stable rule identifier (unique per project)."},
+                    "trigger": {
+                        "type": "string",
+                        "description": "Lifecycle moment when the rule fires (one of: always, on_apply, on_verify, on_archive, on_spec).",
+                    },
+                    "category": {
+                        "type": "string",
+                        "description": "Rule family — one of: architecture, naming, forbidden, doc-sync, verification.",
+                    },
+                    "instruction": {"type": "string", "description": "Human-readable guidance the agent must follow."},
+                    "project_slug": {"type": "string", "description": "Project slug; defaults to OPENSDDRAG_PROJECT."},
+                    "severity": {
+                        "type": "string",
+                        "default": "warning",
+                        "description": "How the harness should weigh a violation (error, warning, info).",
+                    },
+                    "enabled": {"type": "boolean", "default": True, "description": "False soft-deletes an existing rule."},
+                    "metadata": {"type": "object", "description": "Free-form JSON attached to the rule."},
+                },
+            },
+        ),
+        types.Tool(
+            name="list_rules",
+            description=(
+                "List project rules with optional filters. By default soft-deleted "
+                "rules (enabled=false) are excluded — pass enabled_only=false to "
+                "include them."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "project_slug": {"type": "string", "description": "Project slug; defaults to OPENSDDRAG_PROJECT."},
+                    "trigger": {"type": "string", "description": "Filter by trigger value."},
+                    "category": {"type": "string", "description": "Filter by category value."},
+                    "enabled_only": {"type": "boolean", "default": True},
+                },
+            },
+        ),
+        types.Tool(
+            name="get_harness_checklist",
+            description=(
+                "Return all enabled harness rules for a given phase trigger "
+                "(on_apply, on_verify, on_archive, on_spec), ordered by severity "
+                "(error first) then name. Used by /opsr:apply, /opsr:verify, "
+                "/opsr:archive, and /opsr:spec to present a phase-gate checklist."
+            ),
+            inputSchema={
+                "type": "object",
+                "required": ["trigger"],
+                "properties": {
+                    "trigger": {
+                        "type": "string",
+                        "enum": ["on_apply", "on_verify", "on_archive", "on_spec"],
+                        "description": "Phase trigger to fetch rules for.",
+                    },
+                    "project_slug": {"type": "string", "description": "Project slug; defaults to OPENSDDRAG_PROJECT."},
                 },
             },
         ),
@@ -387,7 +484,17 @@ async def _dispatch(name: str, args: dict) -> list[types.TextContent]:
         case "get_working_context":
             project_id = await _resolve_project_id(args.get("project_slug"))
             session = await session_repository.get_or_create(project_id)
-            return _json(session.model_dump())
+            # Eagerly inject trigger="always" rules so every agent session
+            # starts with the project's structural invariants loaded. This is
+            # the single performance-sensitive addition — one indexed lookup
+            # on (project_id, trigger, enabled) — and `rules` is always
+            # present in the response (empty list when none are defined).
+            always_rules = await rule_repository.list_by_trigger(
+                project_id, "always", enabled_only=True
+            )
+            payload = session.model_dump()
+            payload["rules"] = [r.model_dump() for r in always_rules]
+            return _json(payload)
 
         case "update_working_context":
             project_id = await _resolve_project_id(args.get("project_slug"))
@@ -430,6 +537,62 @@ async def _dispatch(name: str, args: dict) -> list[types.TextContent]:
             embedding = embed(f"{args['name']} {args['description']}")
             skill = await skill_repository.create_skill(data, embedding)
             return _text(f"Skill '{skill.name}' created.")
+
+        # Rules (Harness)
+        case "add_rule":
+            trigger = args.get("trigger")
+            if trigger not in VALID_RULE_TRIGGERS:
+                return _text(
+                    f"Error: Invalid trigger '{trigger}'. Valid values: {', '.join(VALID_RULE_TRIGGERS)}"
+                )
+            category = args.get("category")
+            if category not in VALID_RULE_CATEGORIES:
+                return _text(
+                    f"Error: Invalid category '{category}'. "
+                    f"Valid values: {', '.join(VALID_RULE_CATEGORIES)}"
+                )
+            severity = args.get("severity", "warning")
+            if severity not in VALID_RULE_SEVERITIES:
+                return _text(
+                    f"Error: Invalid severity '{severity}'. "
+                    f"Valid values: {', '.join(VALID_RULE_SEVERITIES)}"
+                )
+            project_id = await _resolve_project_id(args.get("project_slug"))
+            data = RuleCreate(
+                project_id=project_id,
+                name=args["name"],
+                trigger=trigger,
+                category=category,
+                severity=severity,
+                instruction=args["instruction"],
+                enabled=bool(args.get("enabled", True)),
+                metadata=args.get("metadata") or {},
+            )
+            rule = await rule_repository.upsert(data)
+            return _json(rule.model_dump(mode="json"))
+
+        case "list_rules":
+            project_id = await _resolve_project_id(args.get("project_slug"))
+            rules = await rule_repository.list_all(
+                project_id,
+                trigger=args.get("trigger"),
+                category=args.get("category"),
+                enabled_only=bool(args.get("enabled_only", True)),
+            )
+            return _json([r.model_dump(mode="json") for r in rules])
+
+        case "get_harness_checklist":
+            trigger = args.get("trigger")
+            if trigger not in VALID_HARNESS_CHECKLIST_TRIGGERS:
+                return _text(
+                    f"Error: Invalid trigger '{trigger}'. "
+                    f"Valid values: {', '.join(VALID_HARNESS_CHECKLIST_TRIGGERS)}"
+                )
+            project_id = await _resolve_project_id(args.get("project_slug"))
+            rules = await rule_repository.list_by_trigger(
+                project_id, trigger, enabled_only=True
+            )
+            return _json([r.model_dump() for r in rules])
 
         # SDD Artifacts (Protocols)
         case "create_artifact":

@@ -6,7 +6,8 @@ export function getCommands(slug, serverUrl) {
    */
   const artifactHeader = (name) => `> **IMPORTANT — ${name}**
 > This command requires the **\`opensddrag\`** MCP server (${serverUrl}), configured in \`.mcp.json\`.
-> MCP tools provided by this server: \`create_artifact\`, \`read_artifact\`, \`list_artifacts\`, \`update_artifact\`, \`validate_artifact\`, \`link_artifacts\`, \`get_relationships\`, \`search_semantic\`, \`recall_episodes\`, \`get_working_context\`, \`update_working_context\`, \`record_trace\`
+> MCP tools provided by this server: \`create_artifact\`, \`read_artifact\`, \`list_artifacts\`, \`update_artifact\`, \`validate_artifact\`, \`link_artifacts\`, \`get_relationships\`, \`search_semantic\`, \`recall_episodes\`, \`get_working_context\`, \`update_working_context\`, \`record_trace\`, \`get_harness_checklist\`
+
 > **If these tools are NOT in your active tool list**: STOP immediately. Do NOT investigate or try alternatives. Tell the user: "The opensddrag MCP server is not connected. Please start it (\`docker compose up -d\`) and reload the project."
 > All artifact reads/writes go through these MCP tools. DO NOT create local files. DO NOT write markdown to disk.
 > **project_slug for every call: \`${slug}\`**
@@ -22,12 +23,67 @@ export function getCommands(slug, serverUrl) {
    */
   const implementHeader = (name) => `> **IMPORTANT — ${name}**
 > This command requires the **\`opensddrag\`** MCP server (${serverUrl}), configured in \`.mcp.json\`.
-> MCP tools provided by this server: \`read_artifact\`, \`list_artifacts\`, \`update_artifact\`, \`get_relationships\`, \`search_semantic\`, \`recall_episodes\`, \`get_working_context\`, \`update_working_context\`, \`record_trace\`
+> MCP tools provided by this server: \`read_artifact\`, \`list_artifacts\`, \`update_artifact\`, \`get_relationships\`, \`search_semantic\`, \`recall_episodes\`, \`get_working_context\`, \`update_working_context\`, \`record_trace\`, \`get_harness_checklist\`
 > **If these tools are NOT in your active tool list**: STOP immediately. Do NOT investigate or try alternatives. Tell the user: "The opensddrag MCP server is not connected. Please start it (\`docker compose up -d\`) and reload the project."
 > SDD planning artifacts are read/traced via these MCP tools. Code implementation writes local files using Edit, Write, Bash — this is expected and required.
 > **project_slug for every MCP call: \`${slug}\`**
 
 ---
+`;
+
+  /**
+   * Header for harness-management commands (harness).
+   * Project rules are stored in the MCP server's project_rules table.
+   * No local file writes — all persistence is via the harness MCP tools.
+   */
+  const harnessHeader = (name) => `> **IMPORTANT — ${name}**
+> This command requires the **\`opensddrag\`** MCP server (${serverUrl}), configured in \`.mcp.json\`.
+> MCP tools provided by this server: \`add_rule\`, \`list_rules\`, \`get_harness_checklist\`, \`get_working_context\`, \`record_trace\`
+> **If these tools are NOT in your active tool list**: STOP immediately. Do NOT investigate or try alternatives. Tell the user: "The opensddrag MCP server is not connected. Please start it (\`docker compose up -d\`) and reload the project."
+> Harness rules are persisted in the MCP server's database. Do NOT write rule definitions to local files.
+> **project_slug for every call: \`${slug}\`**
+
+---
+`;
+
+  /**
+   * Reusable step block that calls `get_harness_checklist(trigger=...)` and
+   * presents the results as a phase-gate checklist. Injected into `/opsr:apply`,
+   * `/opsr:verify`, `/opsr:archive`, and `/opsr:spec` per spec
+   * `harness-engineering-harness-checklist-spec` (REQ-002, REQ-003).
+   *
+   * Behavior:
+   * - If the checklist is empty, print "No harness rules for this trigger." and
+   *   continue normally.
+   * - If the checklist has error-severity rules, the agent MUST confirm each
+   *   one is satisfied before proceeding to the next step.
+   * - Warning-severity rules are presented as advisory (SHOULD complete).
+   *
+   * @param {string} trigger - One of: "on_apply", "on_verify", "on_archive", "on_spec"
+   * @param {string} gateLabel - Short human-readable label for the gate, e.g. "Marking task archived"
+   * @returns {string} Markdown step content
+   */
+  const harnessChecklistStep = (trigger, gateLabel) => `## Step — Harness checklist (${trigger})
+Call MCP tool to load all enabled harness rules for the \`${trigger}\` trigger:
+\`get_harness_checklist(trigger="${trigger}", project_slug="${slug}")\`
+
+Process the response as follows:
+- **If the result is an empty array \`[]\`** → output "No harness rules for this trigger." and continue to the next step.
+- **If any rule has \`severity="error"\`** → present it as:
+  \`\`\`
+  MUST complete before proceeding (${gateLabel}):
+  - [<name>] <instruction>
+  \`\`\`
+  Then \`STOP\` and wait for the agent/user to confirm each error-severity rule has been satisfied before continuing.
+- **If any rule has \`severity="warning"\`** → present it as:
+  \`\`\`
+  SHOULD complete:
+  - [<name>] <instruction>
+  \`\`\`
+  These are advisory; proceed if the agent judges them satisfied, otherwise complete them first.
+- **If any rule has \`severity="info"\`** → present it inline as "Info: [<name>] <instruction>"; proceed normally.
+- Rules are returned sorted error-first then by name; preserve that order when displaying.
+- This step must run BEFORE the next phase-gate step (archiving the task, finalizing verification, archiving change artifacts, or saving the spec to the database).
 
 `;
 
@@ -242,6 +298,7 @@ If no main spec → create BOTH:
 - TO: \`### Requirement: New Name\`
 \`\`\`
 
+${harnessChecklistStep("on_spec", "Saving specs to the database")}
 ## Step 4 — Save each spec to the database
 For each capability spec:
 \`create_artifact(name="<change-name>-<capability-name>-spec", type="spec", content="<full spec markdown>", metadata={"change_name": "<change-name>", "capability": "<capability-name>", "is_delta": true/false}, project_slug="${slug}")\`
@@ -425,6 +482,7 @@ For each acceptance criterion (REQ-NNN) in the task:
 - Confirm the implementation satisfies the requirement
 - Verify no spec scenarios are broken
 
+${harnessChecklistStep("on_apply", "Marking task archived")}
 ## Step 7 — Mark task as done in database
 \`update_artifact(name="<task-name>", status="archived", project_slug="${slug}")\`
 
@@ -475,6 +533,7 @@ For each decision:
 - Check if the implementation follows the chosen approach
 - If implementation deviates from a decision → **SUGGESTION: Possible deviation from design**
 
+${harnessChecklistStep("on_verify", "Declaring verification complete")}
 ## Step 5 — Generate report
 Output a structured report:
 
@@ -600,6 +659,7 @@ If delta specs exist:
 - If yes → execute <opsr:sync logic for each delta spec
 - If no → archive without syncing
 
+${harnessChecklistStep("on_archive", "Archiving change artifacts")}
 ## Step 5 — Archive all change artifacts
 For each artifact in this change (proposal, all specs, design, all tasks):
 \`update_artifact(name="<artifact-name>", status="archived", metadata={"archived_at": "<ISO timestamp>", "change_name": "<change-name>"}, project_slug="${slug}")\`
@@ -831,6 +891,134 @@ Group by: this project / other projects / past actions.
 
 ## Step 5 — Offer to read the full artifact
 \`read_artifact(name="<artifact-name>", project_slug="${slug}")\`
+`,
+    },
+
+    // ── <opsr:harness ───────────────────────────────────────────────────────────
+    {
+      folder: "opsr",
+      name: "harness",
+      content: `${harnessHeader("/opsr:harness")}## Purpose
+Manage project harness rules: add new rules, list existing rules, and disable rules that are no longer needed.
+Harness rules are persistent behavioral constraints injected into every agent session via \`get_working_context\` (for \`trigger="always"\` rules) and surfaced as phase-gate checklists via \`get_harness_checklist\`.
+
+## Input
+$ARGUMENTS = one of:
+- \`add\` — followed by rule fields or a natural-language description
+- \`list\` — show all rules for this project
+- \`disable <rule-name>\` — soft-delete a rule by name
+
+If $ARGUMENTS is empty, show the current rules list and ask what the user wants to do.
+
+## Supported rule fields
+
+| Field | Values |
+|-------|--------|
+| \`name\`        | kebab-case slug, unique per project |
+| \`trigger\`     | \`always\` (every session) / \`on_apply\` / \`on_verify\` / \`on_archive\` / \`on_spec\` |
+| \`category\`    | \`architecture\` / \`naming\` / \`forbidden\` / \`doc-sync\` / \`verification\` |
+| \`severity\`    | \`error\` (MUST satisfy) / \`warning\` (SHOULD satisfy) / \`info\` (advisory) |
+| \`instruction\` | free-text rule the agent must follow |
+| \`metadata\`    | optional JSON |
+| \`enabled\`     | \`true\` (default) / \`false\` (soft-delete) |
+
+## Step 1 — Parse the operation
+
+If $ARGUMENTS starts with \`add\`:
+  → Go to **Step 2A — Add**
+
+If $ARGUMENTS starts with \`list\`:
+  → Go to **Step 2B — List**
+
+If $ARGUMENTS starts with \`disable <name>\`:
+  → Go to **Step 2C — Disable**
+
+If $ARGUMENTS is empty:
+  → Call \`list_rules(project_slug="${slug}")\` and show the current state. Ask the user what they want to do.
+
+## Step 2A — Add a rule
+
+If the user provided explicit fields after \`add\` (e.g. \`add name=repo-pattern trigger=always category=architecture severity=error instruction="..."\`), use them as-is.
+
+Otherwise, ask the user for each field. **You can infer sensible defaults from natural language:**
+- "always update CHANGELOG when applying" → trigger=\`on_apply\`, category=\`doc-sync\`, severity=\`warning\`
+- "never do X" → trigger=\`always\`, category=\`forbidden\`, severity=\`error\`
+- "use Y pattern" → trigger=\`always\`, category=\`architecture\`, severity=\`warning\`
+
+**Show the inferred values and ask for confirmation** before calling \`add_rule\`.
+
+Then call:
+
+\`\`\`
+add_rule(
+  name:        "<kebab-case>",
+  trigger:     "<always|on_apply|on_verify|on_archive|on_spec>",
+  category:    "<architecture|naming|forbidden|doc-sync|verification>",
+  severity:    "<error|warning|info>",
+  instruction: "<text>",
+  project_slug:"${slug}",
+  enabled:     true
+)
+\`\`\`
+
+Confirm to the user:
+"Rule '<name>' added. It will [be injected into every working context | be checked during /opsr:<trigger> when the phase completes]."
+
+Then record the operation:
+\`record_trace(action="add_rule", result_summary="Added harness rule: <name>", project_slug="${slug}")\`
+
+## Step 2B — List rules
+
+Call:
+
+\`list_rules(project_slug="${slug}", enabled_only=true)\`
+
+Present the results **grouped by trigger**, in this order:
+
+\`\`\`
+### Always (loaded at session start)
+- [<category>:<severity>] <name> — <truncated instruction (max 80 chars)>
+
+### On Apply (checked during /opsr:apply)
+- ...
+
+### On Verify (checked during /opsr:verify)
+- ...
+
+### On Archive (checked during /opsr:archive)
+- ...
+
+### On Spec (checked during /opsr:spec)
+- ...
+\`\`\`
+
+If the result list is empty, respond:
+"No harness rules defined for this project. Run \`/opsr:harness add\` to create the first rule."
+
+If rules exist in only some sections, show "(none)" for empty sections.
+
+## Step 2C — Disable a rule
+
+Extract the rule name from $ARGUMENTS (the token after \`disable\`).
+
+Call:
+
+\`add_rule(name: "<name>", enabled: false, project_slug: "${slug}")\`
+
+(You don't need to pass the other fields — \`add_rule\` is an upsert keyed on \`(project_id, name)\` and will set the existing rule's \`enabled\` flag to \`false\`.)
+
+Confirm:
+"Rule '<name>' disabled. It will no longer appear in checklists or session context. Re-add with the same name to re-enable."
+
+Then record:
+\`record_trace(action="disable_rule", result_summary="Disabled harness rule: <name>", project_slug="${slug}")\`
+
+## Notes
+
+- The same \`add_rule\` MCP call is used for create, update, and soft-delete — it is idempotent on \`(project_id, name)\`.
+- Disabled rules are preserved in the database and can be re-enabled by calling \`add_rule\` with the same \`name\` and \`enabled=true\`.
+- Rules are project-scoped — they never leak across projects.
+- The OpenCode equivalent of this command is the \`opensddrag-harness\` skill, which calls the same MCP tools.
 `,
     },
   ];

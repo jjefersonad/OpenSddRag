@@ -9,6 +9,7 @@ import { renderClaudeMdBlock, renderClaudeMdStandalone } from "../templates/clau
 import { getCommands } from "../templates/commands/index.js";
 import { getOpenCodeCommands } from "../templates/commands/opencode.js";
 import { getSkills } from "../templates/skills/index.js";
+import { getHarnessSkill } from "../templates/skill-md.js";
 
 // ── Config writers ─────────────────────────────────────────────────────────────
 
@@ -116,7 +117,7 @@ export const initCommand = new Command("init")
       console.log(chalk.dim("    .mcp.json                                    — MCP server (type: http)"));
       console.log(chalk.dim("    .claude/skills/opensddrag-*/SKILL.md         — individual skill per command"));
       console.log(chalk.dim("    .agents/skills/opensddrag-*/SKILL.md         — individual skill per command"));
-      console.log(chalk.dim("    .claude/commands/opsr/       — slash commands (/opsr:propose, /opsr:apply...)"));
+      console.log(chalk.dim("    .claude/commands/opsr/       — slash commands (/opsr:propose, /opsr:apply, /opsr:harness...)"));
     }
     if (selectedTools.includes("OpenCode")) {
       console.log(chalk.dim("    opencode.json                — MCP server"));
@@ -166,7 +167,16 @@ export const initCommand = new Command("init")
       configured.push(`${tool} → ${file}`);
     }
     // Individual skill files per command — roots determined by selected tools
-    const skills = getSkills(slug, serverUrl);
+    const skills = [
+      ...getSkills(slug, serverUrl),
+      // Harness management skill — installed alongside the SDD skills so
+      // both Claude Code and OpenCode can manage project rules via the
+      // `add_rule` / `list_rules` / `get_harness_checklist` MCP tools.
+      {
+        name: "opensddrag-harness",
+        content: getHarnessSkill({ slug, serverUrl }),
+      },
+    ];
     const skillRoots = [];
     if (selectedTools.includes("Claude Code")) {
       skillRoots.push(join(cwd, ".claude", "skills"));

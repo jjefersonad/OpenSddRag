@@ -13,4 +13,4 @@ ENV OPENSDDRAG_PROJECT=default
 
 EXPOSE 8000
 
-CMD ["opensddrag", "server", "start", "--transport", "sse", "--port", "8000"]
+CMD ["opensddrag-server", "server", "start", "--transport", "sse", "--port", "8000"]
