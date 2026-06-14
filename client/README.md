@@ -74,8 +74,11 @@ npx opensddrag init --tools opencode
 | `.mcp.json` | Claude Code MCP server entry (`type: http`) |
 | `opencode.json` | OpenCode MCP server entry (only with `--tools opencode`) |
 | `.claude/skills/opensddrag-*/SKILL.md` | One skill file per SDD command |
+| `.claude/skills/opensddrag-harness/SKILL.md` | Harness rule management skill |
 | `.agents/skills/opensddrag-*/SKILL.md` | Same skills for agent-native tooling |
+| `.agents/skills/opensddrag-harness/SKILL.md` | Same harness skill for agent-native tooling |
 | `.opencode/skills/opensddrag-*/SKILL.md` | OpenCode-native skills (when selected) |
+| `.opencode/skills/opensddrag-harness/SKILL.md` | OpenCode-native harness skill (when selected) |
 | `.claude/commands/opsr/*.md` | Claude Code slash commands |
 | `.opencode/commands/opsr/*.md` | OpenCode slash commands (when selected) |
 | `CLAUDE.md` | OpenSddRag section appended (or file created) |
@@ -118,6 +121,55 @@ After `init`, the following slash commands are available inside Claude Code (pre
 | `/opsr:status` | Show what is in progress and what is done |
 | `/opsr:flow` | Run the full SDD flow end-to-end for a feature |
 | `/opsr:search` | Semantic search over specs and past work |
+| `/opsr:harness` | Add, list, or disable project rules enforced at SDD phase gates |
+
+## Harness
+
+The Harness is a rule-gate layer built on top of the SDD workflow. It lets you define persistent, per-project behavioral rules that are automatically injected into every agent session and enforced at specific SDD phase gates.
+
+**How it works:**
+- Rules are stored in the MCP server's database, scoped to your project.
+- `always` rules are returned automatically by `get_working_context` at the start of every session.
+- Phase-gate rules (`on_spec`, `on_apply`, `on_verify`, `on_archive`) are surfaced by `get_harness_checklist` when the corresponding SDD command runs its gate step.
+- Agents check the checklist before completing each gate action and must satisfy all `error`-severity rules.
+
+### Triggers
+
+| Trigger | When it fires |
+|---|---|
+| `always` | Every agent session — injected via `get_working_context` |
+| `on_spec` | Before saving a spec artifact (`/opsr:spec`) |
+| `on_apply` | Before marking a task complete (`/opsr:apply`) |
+| `on_verify` | Before declaring verification done (`/opsr:verify`) |
+| `on_archive` | Before archiving change artifacts (`/opsr:archive`) |
+
+### MCP Tools
+
+| Tool | Description |
+|---|---|
+| `add_rule` | Create or update a project rule (name, trigger, category, severity, instruction) |
+| `list_rules` | List all rules for the project, grouped by trigger |
+| `get_harness_checklist` | Return enabled rules for a specific trigger — called by SDD commands at phase gates |
+
+### Managing rules
+
+```bash
+# Inside Claude Code, after opensddrag init:
+
+# Add a rule interactively
+/opsr:harness add
+
+# Add a rule directly
+/opsr:harness add name=no-raw-sql trigger=on_apply category=forbidden severity=error instruction="Never write raw SQL strings — use the repository layer"
+
+# List all rules
+/opsr:harness list
+
+# Disable a rule
+/opsr:harness disable no-raw-sql
+```
+
+---
 
 ## Server Setup
 
