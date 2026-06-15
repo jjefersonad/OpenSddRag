@@ -5,11 +5,12 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { join, basename } from "path";
 
 import { checkHealth, createProject } from "../api.js";
+import { DEFAULT_SERVER_URL, resolveServerUrl, resolveApiKey } from "../config.js";
 import { renderClaudeMdBlock, renderClaudeMdStandalone } from "../templates/claude-md.js";
 import { getCommands } from "../templates/commands/index.js";
 import { getOpenCodeCommands } from "../templates/commands/opencode.js";
-import { getSkills } from "../templates/skills/index.js";
-import { getHarnessSkill } from "../templates/skill-md.js";
+import { getSkills, getOpenCodeSkills } from "../templates/skills/index.js";
+import { getHarnessSkill, getOpenCodeHarnessSkill } from "../templates/skill-md.js";
 
 // ── Config writers ─────────────────────────────────────────────────────────────
 
@@ -41,6 +42,9 @@ function writeOpenCode(cwd, serverUrl, _apiKey) {
     url: `${serverUrl}/mcp`,
     enabled: true,
   };
+  if (_apiKey) {
+    config.mcp.opensddrag.headers = { Authorization: `Bearer ${_apiKey}` };
+  }
   writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n");
   return "opencode.json";
 }
@@ -56,7 +60,7 @@ export const initCommand = new Command("init")
   .description("Connect the current project to an OpenSddRag MCP server")
   .option("--project <slug>", "Project slug (default: current directory name)")
   .option("--name <name>", "Project display name")
-  .option("--server <url>", "OpenSddRag server URL", "http://localhost:8000")
+  .option("--server <url>", "OpenSddRag server URL")
   .option("--api-key <key>", "API key for authenticated servers")
   .option("--tools <list>", "Comma-separated tools to configure: claude,opencode (default: ask)")
   .option("--yes", "Skip confirmation prompts")
@@ -66,13 +70,16 @@ export const initCommand = new Command("init")
     console.log(chalk.bold("\n  OpenSddRag — Project Init\n"));
 
     // ── Inputs ────────────────────────────────────────────────────────────────
-    const serverUrl = opts.server ||
-      await input({ message: "OpenSddRag server URL:", default: "http://localhost:8000" });
+    const resolvedUrl = resolveServerUrl(opts, cwd);
+    let serverUrl;
+    if (opts.yes || resolvedUrl !== DEFAULT_SERVER_URL) {
+      serverUrl = resolvedUrl;
+    } else {
+      serverUrl = await input({ message: "OpenSddRag server URL:", default: DEFAULT_SERVER_URL });
+    }
 
-    // Prompt for API key when connecting to a remote server
-    const isRemote = !serverUrl.includes("localhost") && !serverUrl.includes("127.0.0.1");
-    let apiKey = opts.apiKey || null;
-    if (!apiKey && isRemote && !opts.yes) {
+    let apiKey = resolveApiKey(opts);
+    if (!apiKey && !opts.yes) {
       apiKey = await password({
         message: "API key (leave blank to skip — server must have AUTH_ENABLED=false):",
         mask: "*",
@@ -139,9 +146,13 @@ export const initCommand = new Command("init")
       console.log(chalk.green("✓"));
     } catch {
       console.log(chalk.red("✗"));
+      const isLocal = serverUrl.includes("localhost") || serverUrl.includes("127.0.0.1");
       console.error(chalk.red(`\n  Cannot reach ${serverUrl}`));
-      console.error(chalk.dim("  Make sure the OpenSddRag server is running:"));
-      console.error(chalk.dim("    docker compose up -d"));
+      if (isLocal) {
+        console.error(chalk.dim("  Make sure the OpenSddRag server is running:"));
+        console.error(chalk.dim("    docker compose up -d"));
+      }
+      console.error(chalk.dim("  Pass --server <url> or set OPENSDDRAG_SERVER_URL."));
       process.exit(1);
     }
 
@@ -166,33 +177,33 @@ export const initCommand = new Command("init")
       const file = TOOL_WRITERS[tool](cwd, serverUrl, apiKey);
       configured.push(`${tool} → ${file}`);
     }
-    // Individual skill files per command — roots determined by selected tools
-    const skills = [
-      ...getSkills(slug, serverUrl),
-      // Harness management skill — installed alongside the SDD skills so
-      // both Claude Code and OpenCode can manage project rules via the
-      // `add_rule` / `list_rules` / `get_harness_checklist` MCP tools.
-      {
-        name: "opensddrag-harness",
-        content: getHarnessSkill({ slug, serverUrl }),
-      },
-    ];
-    const skillRoots = [];
+    // Individual skill files per command — each tool gets its own generator
     if (selectedTools.includes("Claude Code")) {
-      skillRoots.push(join(cwd, ".claude", "skills"));
-      skillRoots.push(join(cwd, ".agents", "skills"));
+      const ccSkills = [
+        ...getSkills(slug, serverUrl),
+        { name: "opensddrag-harness", content: getHarnessSkill({ slug, serverUrl }) },
+      ];
+      const ccRoots = [join(cwd, ".claude", "skills"), join(cwd, ".agents", "skills")];
+      for (const skill of ccSkills) {
+        for (const root of ccRoots) {
+          const skillDir = join(root, skill.name);
+          mkdirSync(skillDir, { recursive: true });
+          writeFileSync(join(skillDir, "SKILL.md"), skill.content);
+        }
+        configured.push(`skill → ${skill.name}/SKILL.md (${ccRoots.length} root(s))`);
+      }
     }
     if (selectedTools.includes("OpenCode")) {
-      skillRoots.push(join(cwd, ".opencode", "skills"));
-    }
-    for (const skill of skills) {
-      for (const root of skillRoots) {
-        const skillDir = join(root, skill.name);
+      const ocSkills = [
+        ...getOpenCodeSkills(slug, serverUrl),
+        { name: "opensddrag-harness", content: getOpenCodeHarnessSkill({ slug, serverUrl }) },
+      ];
+      const ocRoot = join(cwd, ".opencode", "skills");
+      for (const skill of ocSkills) {
+        const skillDir = join(ocRoot, skill.name);
         mkdirSync(skillDir, { recursive: true });
         writeFileSync(join(skillDir, "SKILL.md"), skill.content);
-      }
-      if (skillRoots.length > 0) {
-        configured.push(`skill → ${skill.name}/SKILL.md (${skillRoots.length} root(s))`);
+        configured.push(`skill → ${skill.name}/SKILL.md (1 root(s))`);
       }
     }
     console.log(chalk.green("✓"));

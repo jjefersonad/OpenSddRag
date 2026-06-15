@@ -63,6 +63,9 @@ npx opensddrag init --server http://localhost:8000 --project my-app --yes
 # Remote server with an API key
 npx opensddrag init --server https://sdd.example.com --api-key sk-... --yes
 
+# CI — configure via env vars, no flags needed
+OPENSDDRAG_SERVER_URL=http://mcp.internal:8000 OPENSDDRAG_API_KEY=sk-... npx opensddrag init --project my-app --yes
+
 # Configure only OpenCode (skip Claude Code)
 npx opensddrag init --tools opencode
 ```
@@ -90,8 +93,14 @@ npx opensddrag init --tools opencode
 
 Check whether the current project is correctly wired to the server.
 
+```
+Options:
+  --server <url>   Override the server URL for this check
+```
+
 ```bash
 npx opensddrag status
+npx opensddrag status --server http://mcp.internal:8000
 ```
 
 Reports:
@@ -101,6 +110,32 @@ Reports:
 - Slash commands — which `/opsr:*` commands are installed
 - `CLAUDE.md` — whether the OpenSddRag section exists
 - Server — live health check + project registration confirmation
+
+## Environment Variables
+
+Both `init` and `status` support configuration via environment variables. Precedence order (first match wins):
+
+1. `--server` / `--api-key` CLI flags
+2. Environment variables
+3. `opensddrag.yaml` (`server_url` or `server` field)
+4. Built-in default (`http://localhost:8000`)
+
+| Variable | Purpose |
+|---|---|
+| `OPENSDDRAG_SERVER_URL` | MCP server URL — used when no `--server` flag is passed |
+| `OPENSDDRAG_API_KEY` | API key for authenticated servers — used when no `--api-key` flag is passed |
+
+```bash
+# Connect to a remote server without flags
+export OPENSDDRAG_SERVER_URL=http://mcp.internal:8000
+export OPENSDDRAG_API_KEY=sk-abc123
+npx opensddrag init --project my-app --yes
+npx opensddrag status
+```
+
+`OPENSDDRAG_API_KEY` is honored for any server URL — including `localhost` — so local servers with `AUTH_ENABLED=true` work correctly.
+
+---
 
 ## SDD Slash Commands
 

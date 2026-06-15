@@ -1,28 +1,21 @@
 /**
  * OpenCode command templates
- * These commands are identical to Claude Code commands
- * Installed to .opencode/commands/opsr/ when OpenCode is selected
+ * Installed to .opencode/commands/opsr/ when OpenCode is selected.
+ * Uses a compact openCodeHeader() (project_slug only) instead of the Claude Code
+ * IMPORTANT/tool-list/STOP block — MCP tools are auto-available in OpenCode.
  */
 
-export function getOpenCodeCommands(slug, serverUrl) {
-  const header = (name) => `> **IMPORTANT — ${name}**
-> This command requires the **\`opensddrag\`** MCP server (${serverUrl}), configured in \`opencode.json\`.
-> MCP tools provided by this server: \`create_artifact\`, \`read_artifact\`, \`list_artifacts\`, \`update_artifact\`, \`validate_artifact\`, \`link_artifacts\`, \`get_relationships\`, \`search_semantic\`, \`recall_episodes\`, \`get_working_context\`, \`update_working_context\`, \`record_trace\`
-> **If these tools are NOT in your active tool list**: STOP immediately. Do NOT investigate or try alternatives. Tell the user: "The opensddrag MCP server is not connected. Please start it (\`docker compose up -d\`) and reload the project."
-> All artifact reads/writes go through these MCP tools. DO NOT create local files. DO NOT write markdown to disk.
-> **project_slug for every call: \`${slug}\`**
+export function getOpenCodeCommands(slug, _serverUrl) {
+  const fm = (description) => `---\ndescription: ${description}\n---\n\n`;
 
----
-
-
-`;
+  const openCodeHeader = () => `> **project_slug for every call:** \`${slug}\`\n\n---\n\n\n`;
 
   return [
     // ── /opsr:propose ──────────────────────────────────────────────────────────
     {
       folder: "opsr",
       name: "propose",
-      content: `${header("/opsr:propose")}## Purpose
+      content: `${fm("Create a named change proposal")}${openCodeHeader()}## Purpose
 Create a named change with a proposal artifact. This is the entry point for every new feature or change.
 The proposal defines WHY, WHAT changes, WHICH capabilities are affected, and the IMPACT.
 After this command, /opsr:spec and /opsr:design become available.
@@ -144,7 +137,7 @@ Tell the user:
     {
       folder: "opsr",
       name: "spec",
-      content: `${header("/opsr:spec")}## Purpose
+      content: `${fm("Write capability specs with requirements and scenarios")}${openCodeHeader()}## Purpose
 Create one or more spec artifacts for the capabilities listed in a proposal.
 Each capability in "New Capabilities" or "Modified Capabilities" gets its own spec artifact.
 Specs use SHALL/MUST language and must have Scenarios with WHEN/THEN format.
@@ -245,7 +238,7 @@ Fix any validation errors before continuing.
     {
       folder: "opsr",
       name: "design",
-      content: `${header("/opsr:design")}## Purpose
+      content: `${fm("Document technical decisions and architecture")}${openCodeHeader()}## Purpose
 Create a design document that captures technical decisions, architecture, trade-offs, and open questions.
 The design must be based on the proposal and spec artifacts already in the database.
 
@@ -318,7 +311,7 @@ Tell the user: "Design saved. Run \`/opsr:tasks <change-name>\` to decompose int
     {
       folder: "opsr",
       name: "tasks",
-      content: `${header("/opsr:tasks")}## Purpose
+      content: `${fm("Break a design into atomic implementation tasks")}${openCodeHeader()}## Purpose
 Decompose the specs and design into atomic, verifiable task artifacts.
 Each task must map to one or more spec requirements (REQ-NNN) and be completable in under 4 hours.
 Tasks depend on BOTH specs AND design being in the database.
@@ -361,7 +354,7 @@ Tell the user: "Tasks saved. Run \`/opsr:apply <change-name>\` to start implemen
     {
       folder: "opsr",
       name: "apply",
-      content: `${header("/opsr:apply")}## Purpose
+      content: `${fm("Implement the next pending task")}${openCodeHeader()}## Purpose
 Implement tasks one by one, validating each against the spec acceptance criteria before marking done.
 Read ALL planning artifacts (proposal, specs, design) as context before implementing any task.
 
@@ -419,7 +412,7 @@ For each acceptance criterion (REQ-NNN) in the task:
     {
       folder: "opsr",
       name: "verify",
-      content: `${header("/opsr:verify")}## Purpose
+      content: `${fm("Validate implementation against spec requirements")}${openCodeHeader()}## Purpose
 Validate the implementation against the spec requirements and design decisions.
 Produces a structured report with CRITICAL, WARNING, and SUGGESTION severity levels.
 Does NOT modify any artifacts — read-only operation.
@@ -489,7 +482,7 @@ Output a structured report:
     {
       folder: "opsr",
       name: "sync",
-      content: `${header("/opsr:sync")}## Purpose
+      content: `${fm("Merge delta specs into main specs")}${openCodeHeader()}## Purpose
 Merge delta specs (ADDED/MODIFIED/REMOVED/RENAMED sections) into the main specs stored in the database.
 Delta specs are created by /opsr:spec for MODIFIED capabilities.
 After sync, the main spec reflects all changes. This is called automatically during /opsr:archive.
@@ -548,7 +541,7 @@ Tell the user which capabilities were updated.
     {
       folder: "opsr",
       name: "archive",
-      content: `${header("/opsr:archive")}## Purpose
+      content: `${fm("Finalize and archive a completed change")}${openCodeHeader()}## Purpose
 Finalize a completed change by archiving all its artifacts.
 Runs verification checks, syncs delta specs to main specs, then archives everything.
 
@@ -596,7 +589,7 @@ Show summary:
     {
       folder: "opsr",
       name: "explore",
-      content: `${header("/opsr:explore")}## Purpose
+      content: `${fm("Investigate a problem without implementing anything")}${openCodeHeader()}## Purpose
 Think through a problem, idea, or question WITHOUT implementing anything.
 Explore creates understanding before committing to a proposal.
 You may create OpenSddRag artifacts to capture insights, but NEVER write application code.
@@ -644,7 +637,7 @@ When the user has enough insight to decide:
     {
       folder: "opsr",
       name: "continue",
-      content: `${header("/opsr:continue")}## Purpose
+      content: `${fm("Create the next artifact in the SDD dependency chain")}${openCodeHeader()}## Purpose
 Create the NEXT single artifact in the dependency chain for a change.
 Unlike /opsr:flow which creates all artifacts, this creates ONE artifact and stops.
 Dependency order: proposal → specs → design → tasks.
@@ -685,7 +678,7 @@ After creating the artifact:
     {
       folder: "opsr",
       name: "status",
-      content: `${header("/opsr:status")}## Purpose
+      content: `${fm("Show state of all in-progress changes")}${openCodeHeader()}## Purpose
 Show the current state of all in-progress changes for this project.
 Reads from the MCP server — no local files involved.
 
@@ -732,7 +725,7 @@ Then show:
     {
       folder: "opsr",
       name: "flow",
-      content: `${header("/opsr:flow")}## Purpose
+      content: `${fm("Run the complete SDD flow end-to-end")}${openCodeHeader()}## Purpose
 Run the complete SDD flow end-to-end in a single session.
 ALL artifacts are saved to the database via MCP tools — no local files.
 
@@ -785,7 +778,7 @@ Follow /opsr:archive steps:
     {
       folder: "opsr",
       name: "search",
-      content: `${header("/opsr:search")}## Purpose
+      content: `${fm("Semantic search over specs and past work")}${openCodeHeader()}## Purpose
 Search the SDD knowledge base using semantic similarity (pgvector).
 Use this BEFORE starting any new work to find existing specs, decisions, and past implementations.
 
@@ -807,6 +800,126 @@ Group by: this project / other projects / past actions.
 
 ## Step 5 — Offer to read the full artifact
 \`read_artifact(name="<artifact-name>", project_slug="${slug}")\`
+`,
+    },
+
+    // ── /opsr:harness ───────────────────────────────────────────────────────────
+    {
+      folder: "opsr",
+      name: "harness",
+      content: `${fm("Manage persistent project rules (add, list, disable)")}${openCodeHeader()}## Purpose
+Manage project harness rules: add new rules, list existing rules, and disable rules that are no longer needed.
+Harness rules are persistent behavioral constraints injected into every agent session via \`get_working_context\` (for \`trigger="always"\` rules) and surfaced as phase-gate checklists via \`get_harness_checklist\`.
+
+## Input
+$ARGUMENTS = one of:
+- \`add\` — followed by rule fields or a natural-language description
+- \`list\` — show all rules for this project
+- \`disable <rule-name>\` — soft-delete a rule by name
+
+If $ARGUMENTS is empty, show the current rules list and ask what the user wants to do.
+
+## Supported rule fields
+
+| Field | Values |
+|-------|--------|
+| \`name\`        | kebab-case slug, unique per project |
+| \`trigger\`     | \`always\` (every session) / \`on_apply\` / \`on_verify\` / \`on_archive\` / \`on_spec\` |
+| \`category\`    | \`architecture\` / \`naming\` / \`forbidden\` / \`doc-sync\` / \`verification\` |
+| \`severity\`    | \`error\` (MUST satisfy) / \`warning\` (SHOULD satisfy) / \`info\` (advisory) |
+| \`instruction\` | free-text rule the agent must follow |
+| \`metadata\`    | optional JSON |
+| \`enabled\`     | \`true\` (default) / \`false\` (soft-delete) |
+
+## Step 1 — Parse the operation
+
+If $ARGUMENTS starts with \`add\`:
+  → Go to **Step 2A — Add**
+
+If $ARGUMENTS starts with \`list\`:
+  → Go to **Step 2B — List**
+
+If $ARGUMENTS starts with \`disable <name>\`:
+  → Go to **Step 2C — Disable**
+
+If $ARGUMENTS is empty:
+  → Call \`list_rules(project_slug="${slug}")\` and show the current state. Ask the user what they want to do.
+
+## Step 2A — Add a rule
+
+If the user provided explicit fields after \`add\`, use them as-is.
+
+Otherwise, ask the user for each field. **You can infer sensible defaults from natural language:**
+- "always update CHANGELOG when applying" → trigger=\`on_apply\`, category=\`doc-sync\`, severity=\`warning\`
+- "never do X" → trigger=\`always\`, category=\`forbidden\`, severity=\`error\`
+- "use Y pattern" → trigger=\`always\`, category=\`architecture\`, severity=\`warning\`
+
+**Show the inferred values and ask for confirmation** before calling \`add_rule\`.
+
+Then call:
+\`\`\`
+add_rule(
+  name:        "<kebab-case>",
+  trigger:     "<always|on_apply|on_verify|on_archive|on_spec>",
+  category:    "<architecture|naming|forbidden|doc-sync|verification>",
+  severity:    "<error|warning|info>",
+  instruction: "<text>",
+  project_slug:"${slug}",
+  enabled:     true
+)
+\`\`\`
+
+Confirm to the user:
+"Rule '<name>' added. It will [be injected into every working context | be checked during /opsr:<trigger> when the phase completes]."
+
+Then record:
+\`record_trace(action="add_rule", result_summary="Added harness rule: <name>", project_slug="${slug}")\`
+
+## Step 2B — List rules
+
+Call:
+\`list_rules(project_slug="${slug}", enabled_only=true)\`
+
+Present the results **grouped by trigger**, in this order:
+
+\`\`\`
+### Always (loaded at session start)
+- [<category>:<severity>] <name> — <instruction (max 80 chars)>
+
+### On Apply (checked during /opsr:apply)
+- ...
+
+### On Verify (checked during /opsr:verify)
+- ...
+
+### On Archive (checked during /opsr:archive)
+- ...
+
+### On Spec (checked during /opsr:spec)
+- ...
+\`\`\`
+
+If the result list is empty, respond:
+"No harness rules defined for this project. Run \`/opsr:harness add\` to create the first rule."
+
+## Step 2C — Disable a rule
+
+Extract the rule name from $ARGUMENTS (the token after \`disable\`).
+
+Call:
+\`add_rule(name: "<name>", enabled: false, project_slug: "${slug}")\`
+
+Confirm:
+"Rule '<name>' disabled. It will no longer appear in checklists or session context. Re-add with the same name to re-enable."
+
+Then record:
+\`record_trace(action="disable_rule", result_summary="Disabled harness rule: <name>", project_slug="${slug}")\`
+
+## Notes
+
+- The same \`add_rule\` MCP call is used for create, update, and soft-delete — it is idempotent on \`(project_id, name)\`.
+- Disabled rules are preserved in the database and can be re-enabled by calling \`add_rule\` with the same \`name\` and \`enabled=true\`.
+- Rules are project-scoped — they never leak across projects.
 `,
     },
   ];
