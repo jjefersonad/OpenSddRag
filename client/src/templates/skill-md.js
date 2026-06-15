@@ -6,7 +6,12 @@ export function getHarnessSkill({ slug, serverUrl }) {
   // (add_rule, list_rules, get_harness_checklist). No direct DB access, no
   // local file writes for rule storage — rules are persisted via the MCP
   // server's `project_rules` table.
-  return `# OpenSddRag — Harness
+  return `---
+name: opensddrag-harness
+description: Manage persistent project rules — add, list, and disable behavioral constraints
+---
+
+# OpenSddRag — Harness
 
 This project is connected to the OpenSddRag Harness (${serverUrl}).
 The Harness layer manages **project rules**: persistent, per-project behavioral
@@ -165,6 +170,12 @@ record_trace(action="add_rule"|"disable_rule", result_summary="Added/disabled ru
 - **Always confirm with the user before calling \`add_rule\`** for new rules, especially when inferring fields from natural language.
 - **Soft-delete is the only way to "remove" a rule** — re-adding with the same name restores it.
 `;
+}
+
+export function getOpenCodeHarnessSkill({ slug, serverUrl }) {
+  const full = getHarnessSkill({ slug, serverUrl });
+  // OpenCode auto-discovers tools from opencode.json — the table is noise.
+  return full.replace(/\n## MCP tools used\n[\s\S]*?(?=\n## |\n$)/, '\n');
 }
 
 export function renderSkillMd({ slug, serverUrl }) {

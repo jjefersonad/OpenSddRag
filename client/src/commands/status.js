@@ -4,25 +4,22 @@ import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 
 import { checkHealth, listProjects } from "../api.js";
+import { resolveServerUrl, loadOpensddragYaml } from "../config.js";
 
 export const statusCommand = new Command("status")
   .description("Check OpenSddRag connection status for the current project")
-  .action(async () => {
+  .option("--server <url>", "OpenSddRag server URL")
+  .action(async (opts) => {
     const cwd = process.cwd();
 
     console.log(chalk.bold("\n  OpenSddRag — Status\n"));
 
-    let serverUrl = "http://localhost:8000";
-    let slug = null;
+    const serverUrl = resolveServerUrl(opts, cwd);
+    const yaml = loadOpensddragYaml(cwd);
+    const slug = yaml?.project ?? null;
 
     // ── Local config ──────────────────────────────────────────────────────────
-    const yamlPath = join(cwd, "opensddrag.yaml");
-    if (existsSync(yamlPath)) {
-      const yaml = readFileSync(yamlPath, "utf8");
-      const slugMatch = yaml.match(/^project:\s*(.+)$/m);
-      const serverMatch = yaml.match(/^server:\s*(.+)$/m);
-      if (slugMatch) slug = slugMatch[1].trim();
-      if (serverMatch) serverUrl = serverMatch[1].trim();
+    if (yaml) {
       console.log(chalk.green("  ✓") + ` opensddrag.yaml  →  project: ${chalk.cyan(slug)}`);
     } else {
       console.log(chalk.red("  ✗") + " opensddrag.yaml not found — run: " + chalk.dim("opensddrag init"));
