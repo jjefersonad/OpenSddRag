@@ -9,5 +9,14 @@ class Settings(BaseSettings):
     opensddrag_project: str = "default"
     auth_enabled: bool = True
 
+    # Hybrid search (capability `hybrid-search` of `improve-retrieval-accuracy`).
+    # When enabled, `search_semantic` fuses a lexical (Postgres `tsvector` /
+    # `ts_rank`) ranking with the existing vector (pgvector cosine) ranking
+    # using Reciprocal Rank Fusion. When disabled, the pure-vector query is
+    # used as a safe rollback without redeploy. CPU-only — no model change.
+    hybrid_search_enabled: bool = True
+    search_candidate_depth: int = 20
+    rrf_k: int = 60
+
 
 settings = Settings()
