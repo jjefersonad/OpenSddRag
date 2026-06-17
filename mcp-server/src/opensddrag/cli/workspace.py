@@ -207,7 +207,7 @@ def init(
         console.print(f"\n[bold green]✓ Project '{slug}' connected to OpenSddRag![/bold green]")
         console.print("\nNext steps:")
         console.print(f"  [dim]opensddrag spec create --project {slug}[/dim]")
-        console.print(f"  [dim]opensddrag search \"<topic>\" --project {slug}[/dim]")
+        console.print(f"  [dim]opensddrag search artifacts \"<topic>\" --project {slug}[/dim]")
         console.print("  Or open Claude Code — the MCP server is ready.")
 
     asyncio.run(_run())

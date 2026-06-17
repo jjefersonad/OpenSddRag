@@ -8,6 +8,12 @@ from opensddrag.config import settings
 
 _pool: AsyncConnectionPool | None = None
 
+# Last migration that existed before the schema_migrations tracking table was
+# introduced. Used by run_migrations() bootstrap to "adopt" a pre-existing DB
+# (whose non-idempotent legacy migrations must not be re-run) without skipping
+# any newer migration that still needs to execute.
+_LEGACY_BASELINE = "003_project_rules.sql"
+
 
 async def get_pool() -> AsyncConnectionPool:
     global _pool
@@ -50,7 +56,10 @@ async def run_migrations() -> None:
             """
         )
         # Bootstrap: if tracking table was just created and pre-existing tables
-        # are present, mark all migration files as applied to avoid re-running them.
+        # are present, adopt only the legacy baseline (marking it as applied
+        # without re-running those non-idempotent migrations). Fall through to
+        # the normal loop below so any newer migration that has not been
+        # applied yet is actually executed.
         async with conn.cursor() as cur:
             await cur.execute("SELECT COUNT(*) FROM schema_migrations")
             count_row = await cur.fetchone()
@@ -63,11 +72,11 @@ async def run_migrations() -> None:
                 )
                 if await cur.fetchone():
                     for mf in migration_files:
-                        await cur.execute(
-                            "INSERT INTO schema_migrations (filename) VALUES (%s) ON CONFLICT DO NOTHING",
-                            (mf.name,),
-                        )
-                    return
+                        if mf.name <= _LEGACY_BASELINE:
+                            await cur.execute(
+                                "INSERT INTO schema_migrations (filename) VALUES (%s) ON CONFLICT DO NOTHING",
+                                (mf.name,),
+                            )
 
         for migration_file in migration_files:
             async with conn.cursor() as cur:
