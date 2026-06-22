@@ -43,6 +43,8 @@ Each artifact lives in the database with a vector embedding, enabling semantic s
 
 All vectors use HNSW indexes (`vector_cosine_ops`). Embeddings are 384 dimensions via `all-MiniLM-L6-v2`.
 
+For the server-side layer model (Clean Architecture) see [mcp-server/docs/architecture/clean-architecture.md](mcp-server/docs/architecture/clean-architecture.md).
+
 ---
 
 ## Prerequisites
