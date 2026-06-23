@@ -130,8 +130,13 @@ async def legacy_db_state():
     # bootstrap will fire (artifacts exists, tracking table is freshly
     # created and empty), adopt the baseline, and the normal loop will
     # idempotently re-apply 004_hybrid_search.sql
-    # (ADD COLUMN IF NOT EXISTS / CREATE INDEX IF NOT EXISTS). End state:
-    # schema_migrations populated, content_tsv intact, artifacts rows intact.
+    # (ADD COLUMN IF NOT EXISTS / CREATE INDEX IF NOT EXISTS),
+    # 005_rate_limit_counters.sql (CREATE TABLE IF NOT EXISTS / CREATE
+    # INDEX IF NOT EXISTS), and 006_api_key_permissions.sql
+    # (ADD COLUMN IF NOT EXISTS / DROP+ADD CONSTRAINT IF EXISTS). End
+    # state: schema_migrations populated, content_tsv intact, artifacts
+    # rows intact, rate_limit_counters present, api_keys.permission
+    # column + check constraint present.
     async with get_conn() as conn:
         await conn.execute("DROP TABLE IF EXISTS schema_migrations")
     await run_migrations()
@@ -142,6 +147,8 @@ async def legacy_db_state():
             "002_fix_relationships_and_types.sql",
             "003_project_rules.sql",
             "004_hybrid_search.sql",
+            "005_rate_limit_counters.sql",
+            "006_api_key_permissions.sql",
         ]
     ), "Teardown failed: schema_migrations was not fully restored."
 
@@ -194,8 +201,19 @@ async def test_bootstrap_adopts_only_legacy_baseline(legacy_db_state) -> None:
     )
 
     # Full set check: the tracking table should now contain exactly the
-    # baseline + the post-baseline file (no extras, no missing).
-    expected_all = sorted(_EXPECTED_BASELINE + ["004_hybrid_search.sql"])
+    # baseline + the post-baseline files (no extras, no missing). Note:
+    # the set of post-baseline files is the same set the runner iterates
+    # over — adding a new migration (e.g. 005_rate_limit_counters.sql or
+    # 006_api_key_permissions.sql) to `db/migrations/` automatically
+    # appends it here.
+    expected_all = sorted(
+        _EXPECTED_BASELINE
+        + [
+            "004_hybrid_search.sql",
+            "005_rate_limit_counters.sql",
+            "006_api_key_permissions.sql",
+        ]
+    )
     assert filenames == expected_all, (
         f"schema_migrations contents do not match the expected set after "
         f"bootstrap. Expected: {expected_all!r}, got: {filenames!r}"

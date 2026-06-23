@@ -1,29 +1,16 @@
 > **IMPORTANT — /opsr:search**
-> ALL reads and writes MUST go through the **opensddrag MCP server** (http://localhost:8000).
-> DO NOT create local files. DO NOT write markdown to disk. Use ONLY the MCP tools listed below.
-> **project_slug for every call: `test-change`**
+> This command requires the **`opensddrag`** MCP server (http://localhost:8000), configured in `.mcp.json`.
+> All artifact reads/writes go through the OpenSddRag MCP tools. DO NOT create local files. DO NOT write markdown to disk.
+> **If no OpenSddRag MCP tools are in your active tool list**: STOP immediately. Do NOT investigate or try alternatives. Tell the user: "The opensddrag MCP server is not connected. Please start it (`docker compose up -d`) and reload the project."
+> **project_slug for every call: `opensddrag`**
 
 ---
-
 ## Purpose
-Search the SDD knowledge base using semantic similarity (pgvector).
-Use this BEFORE starting any new work to find existing specs, decisions, and past implementations.
+Search the SDD knowledge base using semantic similarity (pgvector). Use this BEFORE starting any new work to find existing specs, decisions, and past implementations.
 
 ## Input
 $ARGUMENTS = natural language search query.
 
-## Step 1 — Search this project
-`search_semantic(query="$ARGUMENTS", project_slug="test-change", limit=5)`
-
-## Step 2 — If no relevant results, search all projects
-`search_semantic(query="$ARGUMENTS", project_slug="*", limit=5)`
-
-## Step 3 — Recall past actions related to the query
-`recall_episodes(query="$ARGUMENTS", project_slug="test-change", limit=3)`
-
-## Step 4 — Present results clearly
-For each result: name, type, status, and a content excerpt (first 200 chars).
-Group by: this project / other projects / past actions.
-
-## Step 5 — Offer to read the full artifact
-`read_artifact(name="<artifact-name>", project_slug="test-change")`
+## Step 1 — Load the skill
+Invoke the `opensddrag-search` skill (Claude Code auto-loads it from `.claude/skills/opensddrag-search/SKILL.md` via the slash command; OpenCode loads it from `.opencode/skills/opensddrag-search/SKILL.md` via the `skill` tool).
+The skill contains the complete workflow — MCP calls, templates, examples, edge cases. Follow it verbatim and do not duplicate its steps here.
