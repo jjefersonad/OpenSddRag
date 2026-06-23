@@ -88,12 +88,18 @@ async def _resolve_project_id(project_slug: str | None) -> UUID:
 
 async def search_semantic(args: dict, *, project_id: UUID | None, caller_id: str, conn) -> Any:
     slug = args.get("project_slug", "*")
-    embedding = embed(args["query"])
+    query_text = args["query"]
+    embedding = embed(query_text)
     artifact_type = ArtifactType(args["type"]) if args.get("type") else None
+    # `query_text` is forwarded so the repository can run the hybrid lexical+vector
+    # (RRF) pipeline of the `hybrid-search` capability (improve-retrieval-accuracy).
+    # The MCP tool signature is unchanged; the repository falls back to the
+    # pure-vector path when `settings.hybrid_search_enabled` is false or the
+    # query text is empty. REQ-004 (backward-compatible search API).
     if slug == "*":
-        results = await repository.search_semantic("*", embedding, args.get("limit", 5), artifact_type)
+        results = await repository.search_semantic("*", embedding, args.get("limit", 5), artifact_type, query_text=query_text)
     else:
-        results = await repository.search_semantic(project_id, embedding, args.get("limit", 5), artifact_type)
+        results = await repository.search_semantic(project_id, embedding, args.get("limit", 5), artifact_type, query_text=query_text)
     return [
         {"name": a.name, "type": a.type, "status": a.status, "project_id": str(a.project_id), "content": a.content[:500]}
         for a in results
