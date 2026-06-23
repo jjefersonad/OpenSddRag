@@ -1,0 +1,571 @@
+[
+  {
+    "name": "add_rule",
+    "description": "Create or upsert a project rule (idempotent on (project_slug, name)). Setting `enabled=false` soft-deletes an existing rule with the same name.",
+    "inputSchema": {
+      "type": "object",
+      "required": [
+        "name",
+        "trigger",
+        "category",
+        "instruction"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Stable rule identifier (unique per project)."
+        },
+        "trigger": {
+          "type": "string",
+          "description": "Lifecycle moment when the rule fires (one of: always, on_apply, on_verify, on_archive, on_spec)."
+        },
+        "category": {
+          "type": "string",
+          "description": "Rule family — one of: architecture, naming, forbidden, doc-sync, verification."
+        },
+        "instruction": {
+          "type": "string",
+          "description": "Human-readable guidance the agent must follow."
+        },
+        "project_slug": {
+          "type": "string",
+          "description": "Project slug; defaults to OPENSDDRAG_PROJECT."
+        },
+        "severity": {
+          "type": "string",
+          "default": "warning",
+          "description": "How the harness should weigh a violation (error, warning, info)."
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "False soft-deletes an existing rule."
+        },
+        "metadata": {
+          "type": "object",
+          "description": "Free-form JSON attached to the rule."
+        }
+      }
+    }
+  },
+  {
+    "name": "create_artifact",
+    "description": "Create a new SDD artifact (proposal, spec, change, task, design) with automatic embedding.",
+    "inputSchema": {
+      "type": "object",
+      "required": [
+        "name",
+        "type",
+        "content"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "proposal",
+            "spec",
+            "task",
+            "design"
+          ]
+        },
+        "content": {
+          "type": "string"
+        },
+        "project_slug": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "draft",
+            "active",
+            "archived"
+          ],
+          "default": "draft"
+        },
+        "metadata": {
+          "type": "object"
+        }
+      }
+    }
+  },
+  {
+    "name": "create_project",
+    "description": "Create a new project in the OpenSddRag database. Returns the project with an already_existed flag.",
+    "inputSchema": {
+      "type": "object",
+      "required": [
+        "slug",
+        "name"
+      ],
+      "properties": {
+        "slug": {
+          "type": "string",
+          "description": "Unique project identifier (kebab-case)"
+        },
+        "name": {
+          "type": "string",
+          "description": "Human-readable project name"
+        },
+        "description": {
+          "type": "string",
+          "description": "Optional project description"
+        }
+      }
+    }
+  },
+  {
+    "name": "create_skill",
+    "description": "Create a new skill template (project-specific or global).",
+    "inputSchema": {
+      "type": "object",
+      "required": [
+        "name",
+        "description",
+        "workflow_steps"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "workflow_steps": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "step",
+              "instruction"
+            ],
+            "properties": {
+              "step": {
+                "type": "integer"
+              },
+              "instruction": {
+                "type": "string"
+              },
+              "artifact_type": {
+                "type": "string"
+              },
+              "required": {
+                "type": "boolean"
+              }
+            }
+          }
+        },
+        "project_slug": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  {
+    "name": "get_harness_checklist",
+    "description": "Return all enabled harness rules for a given phase trigger (on_apply, on_verify, on_archive, on_spec), ordered by severity (error first) then name. Used by /opsr:apply, /opsr:verify, /opsr:archive, and /opsr:spec to present a phase-gate checklist.",
+    "inputSchema": {
+      "type": "object",
+      "required": [
+        "trigger"
+      ],
+      "properties": {
+        "trigger": {
+          "type": "string",
+          "enum": [
+            "on_apply",
+            "on_verify",
+            "on_archive",
+            "on_spec"
+          ],
+          "description": "Phase trigger to fetch rules for."
+        },
+        "project_slug": {
+          "type": "string",
+          "description": "Project slug; defaults to OPENSDDRAG_PROJECT."
+        }
+      }
+    }
+  },
+  {
+    "name": "get_relationships",
+    "description": "Get artifacts related to a given artifact.",
+    "inputSchema": {
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "project_slug": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  {
+    "name": "get_skill",
+    "description": "Get the workflow steps of a specific skill by name.",
+    "inputSchema": {
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "project_slug": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  {
+    "name": "get_working_context",
+    "description": "Get the current working session: active artifacts, context state.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "project_slug": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  {
+    "name": "link_artifacts",
+    "description": "Create a relationship between two SDD artifacts.",
+    "inputSchema": {
+      "type": "object",
+      "required": [
+        "source_name",
+        "target_name",
+        "relationship_type"
+      ],
+      "properties": {
+        "source_name": {
+          "type": "string"
+        },
+        "target_name": {
+          "type": "string"
+        },
+        "relationship_type": {
+          "type": "string",
+          "enum": [
+            "depends_on",
+            "implements",
+            "relates_to"
+          ]
+        },
+        "project_slug": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  {
+    "name": "list_artifacts",
+    "description": "List SDD artifacts with optional filters.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "project_slug": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "proposal",
+            "spec",
+            "task",
+            "design"
+          ]
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "draft",
+            "active",
+            "archived"
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "list_projects",
+    "description": "List all projects in the central OpenSddRag database.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "list_rules",
+    "description": "List project rules with optional filters. By default soft-deleted rules (enabled=false) are excluded — pass enabled_only=false to include them.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "project_slug": {
+          "type": "string",
+          "description": "Project slug; defaults to OPENSDDRAG_PROJECT."
+        },
+        "trigger": {
+          "type": "string",
+          "description": "Filter by trigger value."
+        },
+        "category": {
+          "type": "string",
+          "description": "Filter by category value."
+        },
+        "enabled_only": {
+          "type": "boolean",
+          "default": true
+        }
+      }
+    }
+  },
+  {
+    "name": "list_skills",
+    "description": "List available SDD skills (global + project-specific).",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "project_slug": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  {
+    "name": "openspec_import",
+    "description": "Import OpenSpec planning documents (proposal.md, design.md, tasks.md, specs/**/*.md) from an OpenSpec project directory into OpenSddRag as searchable, embedded artifacts. Idempotent by default — pass force=true to re-embed existing artifacts.",
+    "inputSchema": {
+      "type": "object",
+      "required": [
+        "path"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Absolute path to the OpenSpec project root (the directory containing openspec/)"
+        },
+        "change": {
+          "type": "string",
+          "description": "Import only this change name; omit to import all changes"
+        },
+        "project_slug": {
+          "type": "string",
+          "description": "Target OpenSddRag project slug; defaults to OPENSDDRAG_PROJECT env var"
+        },
+        "force": {
+          "type": "boolean",
+          "description": "Re-import and re-embed artifacts that were already imported",
+          "default": false
+        }
+      }
+    }
+  },
+  {
+    "name": "read_artifact",
+    "description": "Read the full content of a specific SDD artifact by name.",
+    "inputSchema": {
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "project_slug": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  {
+    "name": "recall_episodes",
+    "description": "Semantic search over past agent execution traces (episodic memory). Useful to recall what was done before.",
+    "inputSchema": {
+      "type": "object",
+      "required": [
+        "query"
+      ],
+      "properties": {
+        "query": {
+          "type": "string"
+        },
+        "project_slug": {
+          "type": "string"
+        },
+        "limit": {
+          "type": "integer",
+          "default": 5
+        }
+      }
+    }
+  },
+  {
+    "name": "record_trace",
+    "description": "Record an agent action to episodic memory.",
+    "inputSchema": {
+      "type": "object",
+      "required": [
+        "action"
+      ],
+      "properties": {
+        "action": {
+          "type": "string",
+          "description": "Action name, e.g. 'create_spec', 'search', 'apply_task'"
+        },
+        "project_slug": {
+          "type": "string"
+        },
+        "artifact_id": {
+          "type": "string"
+        },
+        "query": {
+          "type": "string"
+        },
+        "result_summary": {
+          "type": "string"
+        },
+        "session_id": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  {
+    "name": "search_semantic",
+    "description": "Semantic search over SDD artifacts (specs, tasks, designs) using pgvector. Pass project_slug='*' to search across all projects.",
+    "inputSchema": {
+      "type": "object",
+      "required": [
+        "query"
+      ],
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "Natural language query"
+        },
+        "project_slug": {
+          "type": "string",
+          "description": "Project slug or '*' for all projects"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "proposal",
+            "spec",
+            "task",
+            "design"
+          ]
+        },
+        "limit": {
+          "type": "integer",
+          "default": 5
+        }
+      }
+    }
+  },
+  {
+    "name": "suggest_skill",
+    "description": "Given an objective, suggest the most relevant SDD skill using semantic search.",
+    "inputSchema": {
+      "type": "object",
+      "required": [
+        "objective"
+      ],
+      "properties": {
+        "objective": {
+          "type": "string"
+        },
+        "project_slug": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  {
+    "name": "update_artifact",
+    "description": "Update an existing SDD artifact content or status. Re-generates embedding automatically.",
+    "inputSchema": {
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "project_slug": {
+          "type": "string"
+        },
+        "content": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "draft",
+            "active",
+            "archived"
+          ]
+        },
+        "metadata": {
+          "type": "object"
+        }
+      }
+    }
+  },
+  {
+    "name": "update_working_context",
+    "description": "Update the working session: set active artifacts or context data.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "project_slug": {
+          "type": "string"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "active_artifact_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "context": {
+          "type": "object"
+        }
+      }
+    }
+  },
+  {
+    "name": "validate_artifact",
+    "description": "Validate the structure of an SDD artifact.",
+    "inputSchema": {
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "project_slug": {
+          "type": "string"
+        }
+      }
+    }
+  }
+]
