@@ -1,6 +1,6 @@
 """OpenSddRag MCP Server — MCP protocol adapter backed by the use-case layer.
 
-All 22 tools flow through `ExecuteToolUseCase` (auth → rate-limit →
+All 23 tools flow through `ExecuteToolUseCase` (auth → rate-limit →
 validate → execute → log). Unknown tool names return a structured
 `{"error": {"code": "TOOL_NOT_FOUND", ...}}` envelope.
 """

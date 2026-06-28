@@ -1,6 +1,6 @@
 """Regression test: MCPServerAdapter.list_tools() matches the golden snapshot.
 
-Verifies that the refactored adapter returns exactly the same 22 tools
+Verifies that the refactored adapter returns exactly the same 23 tools
 (name + description + inputSchema) as the snapshot captured at the time
 the adapter migration was completed. A diff means a tool was added,
 removed, renamed, or had its schema changed — all of which require a

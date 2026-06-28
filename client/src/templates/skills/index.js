@@ -49,7 +49,7 @@ const frontmatter = (name, description) =>
  */
 export function getSkills(slug, serverUrl) {
   const note = `> **MCP server:** \`opensddrag\` (${serverUrl}) | **project_slug:** \`${slug}\`
-> **Available tools:** \`create_artifact\`, \`read_artifact\`, \`list_artifacts\`, \`update_artifact\`, \`validate_artifact\`, \`link_artifacts\`, \`get_relationships\`, \`search_semantic\`, \`recall_episodes\`, \`get_working_context\`, \`update_working_context\`, \`record_trace\`, \`get_harness_checklist\`
+> **Available tools:** \`create_artifact\`, \`read_artifact\`, \`list_artifacts\`, \`read_change_bundle\`, \`update_artifact\`, \`validate_artifact\`, \`link_artifacts\`, \`get_relationships\`, \`search_semantic\`, \`recall_episodes\`, \`get_working_context\`, \`update_working_context\`, \`record_trace\`, \`get_harness_checklist\`
 > If these tools are not in your active tool list, the \`opensddrag\` MCP server is not connected — STOP and inform the user.\n\n`;
 
   return SKILLS.map((skill) => ({
