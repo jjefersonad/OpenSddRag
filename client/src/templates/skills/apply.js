@@ -7,18 +7,27 @@ export const applySkill = {
   body: (slug, note) => `# OpenSddRag — Apply
 ${note}## When to use
 To implement tasks one at a time, validating each against its spec acceptance criteria before
-marking it done. Read ALL planning artifacts (proposal + specs + design) as context first.
+marking it done. Read the design (and, per task, the spec it implements) as context — the
+proposal is not re-read during apply, since the design already encodes its decisions.
 
 ## Inputs
 $ARGUMENTS = change name, or a specific task name.
 
 ## Workflow
 
-### Step 1 — Load full planning context
-\`get_working_context(project_slug="${slug}")\`
-\`read_artifact(name="<change-name>-proposal", project_slug="${slug}")\`
-\`read_artifact(name="<change-name>-design", project_slug="${slug}")\`
-Get and read all specs linked to this change.
+### Step 1 — Load implementation context
+1. Load the working context:
+   \`get_working_context(project_slug="${slug}")\`
+2. Fetch the list of all artifacts to serve as the freshness oracle:
+   \`list_artifacts(project_slug="${slug}")\`
+3. Retrieve the change's design content (\`<change-name>-design\`):
+   - Locate the design artifact in the \`list_artifacts\` results to get its \`id\` and \`updated_at\`.
+   - If no design exists, output "Design missing for change '<change-name>'. Run /opsr:design before /opsr:apply." and STOP.
+   - Look up the design's \`id\` in the working context's \`context.content_cache\` (if present):
+     - **CACHE HIT:** If the cache entry exists and its \`updated_at\` matches the oracle's \`updated_at\`, use the cached design content. Do not call \`read_artifact\`.
+     - **CACHE MISS/STALE:** If the cache entry is missing or its \`updated_at\` does not match, call \`read_artifact(name="<change-name>-design", project_slug="${slug}")\`. Then, update the working context cache by calling \`update_working_context\` with \`context.content_cache[<artifact_id>] = {type: "design", content: "<content>", updated_at: "<updated_at>"}\`.
+4. Do NOT read the proposal during apply — its rationale is already captured in the design.
+5. Read the specific spec a task implements pointwise at validation time (Step 6) using the same caching logic (check cache, hit → use, miss/stale → read and cache). Tasks themselves are never cached.
 
 ### Step 2 — List pending tasks
 \`list_artifacts(type="task", status="active", project_slug="${slug}")\`
@@ -57,7 +66,7 @@ ${harnessChecklistBlock(slug, "on_apply", "Marking the task archived")}
 - Task status advanced draft → active → archived in the database.
 
 ## Important rules
-- Read ALL planning artifacts before implementing — never code from the task alone.
+- Read the design and the task's spec before implementing — never code from the task alone. Do not re-read the proposal during apply.
 - Run the harness checklist (on_apply) BEFORE marking a task archived; STOP on any error-severity rule.
 - One task at a time; do not batch-archive tasks.
 `,

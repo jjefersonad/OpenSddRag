@@ -192,7 +192,7 @@ def test_initialize_returns_server_info(mcp_server):
 
 @pytest.mark.integration
 def test_tools_list_returns_all_tools(mcp_server):
-    """tools/list must return exactly 22 tools (alphabetically matches snapshot)."""
+    """tools/list must return exactly 23 tools (alphabetically matches snapshot)."""
     proc, _init = mcp_server
     resp = _call(proc, id_=2, method="tools/list", params={})
     assert "result" in resp, f"tools/list error: {resp}"

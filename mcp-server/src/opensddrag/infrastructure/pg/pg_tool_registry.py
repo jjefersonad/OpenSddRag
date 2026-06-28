@@ -1,4 +1,4 @@
-"""Postgres-backed `ToolRegistryPort` for the 22 MCP tools.
+"""Postgres-backed `ToolRegistryPort` for the 23 MCP tools.
 
 `PgToolRegistry` is the new architecture's source of truth for *which*
 tools exist and *how* they look. The tool metadata (name, description,
@@ -105,6 +105,24 @@ _TOOL_DEFINITIONS: tuple[tuple[str, str, dict[str, Any]], ...] = (
                 "project_slug": {"type": "string"},
                 "type": {"type": "string", "enum": ["proposal", "spec", "task", "design"]},
                 "status": {"type": "string", "enum": ["draft", "active", "archived"]},
+            },
+        },
+    ),
+    (
+        "read_change_bundle",
+        (
+            "Read every artifact of a named change in one aggregated response "
+            "(proposal, design, full specs, and a name+status task list with "
+            "task_count). Members are resolved by metadata.change_name. Used by "
+            "holistic phases (/opsr:verify, /opsr:archive) to replace N reads "
+            "with one."
+        ),
+        {
+            "type": "object",
+            "required": ["change_name"],
+            "properties": {
+                "change_name": {"type": "string", "description": "The change whose artifacts to bundle."},
+                "project_slug": {"type": "string"},
             },
         },
     ),

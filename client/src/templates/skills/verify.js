@@ -14,16 +14,19 @@ $ARGUMENTS = change name.
 
 ## Workflow
 
-### Step 1 — Load all artifacts
-\`read_artifact(name="<change-name>-proposal", project_slug="${slug}")\`
-\`read_artifact(name="<change-name>-design", project_slug="${slug}")\`
-\`get_relationships(name="<change-name>-proposal", project_slug="${slug}")\`
-Read each linked spec and task artifact.
+### Step 1 — Load the change bundle
+\`read_change_bundle(change_name="<change-name>", project_slug="${slug}")\`
+Verification is holistic, so load everything in one call. The response carries the
+proposal, design, full specs, and a task list (\`tasks[] = {name, status}\`) with
+\`task_count\`. If \`task_count\` does not equal the number of returned task entries,
+report an **incomplete bundle** for the change and STOP before declaring verification
+complete. Otherwise proceed — do **not** issue additional \`read_artifact\` calls for
+the proposal, design, or specs.
 
 ### Step 2 — Verify COMPLETENESS
-\`list_artifacts(type="task", status="draft", project_slug="${slug}")\`
+From the bundle's \`tasks[]\`, treat any task whose \`status\` is not \`archived\` as pending.
 - If pending tasks exist → **CRITICAL: Tasks not complete**.
-Extract every REQ-NNN from the specs and search the codebase for implementation evidence.
+Extract every REQ-NNN from the bundle's specs and search the codebase for implementation evidence.
 - If a requirement has no evidence → **CRITICAL: Requirement not implemented**.
 
 ### Step 3 — Verify CORRECTNESS

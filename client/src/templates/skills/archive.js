@@ -13,21 +13,21 @@ $ARGUMENTS = change name. If not provided, list active changes and ask.
 
 ## Workflow
 
-### Step 1 — Get the full status of the change
-\`list_artifacts(type="proposal", project_slug="${slug}")\`
-\`get_relationships(name="<change-name>-proposal", project_slug="${slug}")\`
-Gather all linked artifacts (specs, design, tasks).
+### Step 1 — Load the change bundle
+\`read_change_bundle(change_name="<change-name>", project_slug="${slug}")\`
+Archiving sweeps every artifact of the change, so load them all in one call. The
+response carries the proposal, design, specs, and the task list
+(\`tasks[] = {name, status}\`) with \`task_count\`. Proceed to Step 2.
 
 ### Step 2 — Validate artifact completion
-\`list_artifacts(type="task", status="draft", project_slug="${slug}")\`
+From the bundle's \`tasks[]\`, treat any task whose \`status\` is not \`archived\` as pending.
 If pending tasks exist → warn the user and ask for confirmation to archive anyway.
 
 ### Step 3 — Validate task completion
-Count draft vs archived tasks. If any draft tasks remain → warn and confirm.
+Count pending vs archived tasks from the bundle. If any non-archived tasks remain → warn and confirm.
 
 ### Step 4 — Check for delta specs that need syncing
-\`list_artifacts(type="spec", project_slug="${slug}")\`
-Filter for metadata.change_name = "<change-name>" AND metadata.is_delta = true.
+From the bundle's \`specs[]\`, filter for metadata.change_name = "<change-name>" AND metadata.is_delta = true.
 If deltas exist: show the affected capabilities and ask "Sync delta specs to main specs now? (recommended)".
 - If yes → run the /opsr:sync workflow (load the opensddrag-sync skill) for each delta.
 - If no → archive without syncing.

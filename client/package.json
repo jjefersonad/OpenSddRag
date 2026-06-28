@@ -1,6 +1,6 @@
 {
   "name": "opensddrag",
-  "version": "0.1.2",
+  "version": "0.2.2",
   "description": "CLI client to connect any project to the OpenSddRag SDD+Harness MCP server",
   "keywords": [
     "sdd",

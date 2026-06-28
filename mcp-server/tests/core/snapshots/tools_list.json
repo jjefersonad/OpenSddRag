@@ -21,7 +21,7 @@
         },
         "category": {
           "type": "string",
-          "description": "Rule family — one of: architecture, naming, forbidden, doc-sync, verification."
+          "description": "Rule family \u2014 one of: architecture, naming, forbidden, doc-sync, verification."
         },
         "instruction": {
           "type": "string",
@@ -308,7 +308,7 @@
   },
   {
     "name": "list_rules",
-    "description": "List project rules with optional filters. By default soft-deleted rules (enabled=false) are excluded — pass enabled_only=false to include them.",
+    "description": "List project rules with optional filters. By default soft-deleted rules (enabled=false) are excluded \u2014 pass enabled_only=false to include them.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -345,7 +345,7 @@
   },
   {
     "name": "openspec_import",
-    "description": "Import OpenSpec planning documents (proposal.md, design.md, tasks.md, specs/**/*.md) from an OpenSpec project directory into OpenSddRag as searchable, embedded artifacts. Idempotent by default — pass force=true to re-embed existing artifacts.",
+    "description": "Import OpenSpec planning documents (proposal.md, design.md, tasks.md, specs/**/*.md) from an OpenSpec project directory into OpenSddRag as searchable, embedded artifacts. Idempotent by default \u2014 pass force=true to re-embed existing artifacts.",
     "inputSchema": {
       "type": "object",
       "required": [
@@ -383,6 +383,25 @@
       "properties": {
         "name": {
           "type": "string"
+        },
+        "project_slug": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  {
+    "name": "read_change_bundle",
+    "description": "Read every artifact of a named change in one aggregated response (proposal, design, full specs, and a name+status task list with task_count). Members are resolved by metadata.change_name. Used by holistic phases (/opsr:verify, /opsr:archive) to replace N reads with one.",
+    "inputSchema": {
+      "type": "object",
+      "required": [
+        "change_name"
+      ],
+      "properties": {
+        "change_name": {
+          "type": "string",
+          "description": "The change whose artifacts to bundle."
         },
         "project_slug": {
           "type": "string"
