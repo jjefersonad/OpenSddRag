@@ -244,3 +244,77 @@ async def test_get_working_context_preserves_existing_fields(project):
     assert "project_id" in data
     assert "active_artifact_ids" in data
     assert "context" in data
+
+
+# ── working-context-cache tests ──────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_working_context_cache_filtering_and_retrieval(project):
+    # Empty cache correctness (REQ-009)
+    result = await call_tool("get_working_context", {"project_slug": project.slug})
+    data = _parse(result)
+    assert "content_cache" not in data["context"] or data["context"]["content_cache"] == {}
+
+    # Cache stores proposal/design/active-spec and filters out task (REQ-007)
+    artifact_id_proposal = str(uuid4())
+    artifact_id_design = str(uuid4())
+    artifact_id_task = str(uuid4())
+
+    cache_data = {
+        "content_cache": {
+            artifact_id_proposal: {
+                "type": "proposal",
+                "content": "P" * 2000,
+                "updated_at": "2026-06-27T21:59:22"
+            },
+            artifact_id_design: {
+                "type": "design",
+                "content": "D" * 3000,
+                "updated_at": "2026-06-27T21:59:22"
+            },
+            artifact_id_task: {
+                "type": "task",
+                "content": "T" * 600,
+                "updated_at": "2026-06-27T21:59:22"
+            }
+        }
+    }
+
+    # Update working context with the cache
+    result = await call_tool("update_working_context", {
+        "project_slug": project.slug,
+        "context": cache_data
+    })
+    updated_data = _parse(result)
+    
+    # Verify cached values in returned payload
+    updated_cache = updated_data["context"]["content_cache"]
+    assert artifact_id_proposal in updated_cache
+    assert artifact_id_design in updated_cache
+    # Task write is ignored/rejected (REQ-007 task validation)
+    assert artifact_id_task not in updated_cache
+
+    # Retrieve via get_working_context and verify persistence
+    result = await call_tool("get_working_context", {"project_slug": project.slug})
+    context_data = _parse(result)
+    retrieved_cache = context_data["context"]["content_cache"]
+    assert artifact_id_proposal in retrieved_cache
+    assert artifact_id_design in retrieved_cache
+    assert artifact_id_task not in retrieved_cache
+
+    # Verify logic points: hit (unchanged), stale (updated_at advanced), miss (absent id) (REQ-008)
+    def check_freshness(artifact_id, current_updated_at, cache):
+        entry = cache.get(artifact_id)
+        if not entry:
+            return "miss"
+        if entry.get("updated_at") != current_updated_at:
+            return "stale"
+        return "hit"
+
+    # Test hit
+    assert check_freshness(artifact_id_proposal, "2026-06-27T21:59:22", retrieved_cache) == "hit"
+    # Test stale
+    assert check_freshness(artifact_id_proposal, "2026-06-27T22:00:00", retrieved_cache) == "stale"
+    # Test miss (absent id)
+    assert check_freshness(str(uuid4()), "2026-06-27T21:59:22", retrieved_cache) == "miss"
+

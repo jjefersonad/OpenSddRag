@@ -86,7 +86,9 @@ async def _resolve_project_id(project_slug: str | None) -> UUID:
 # ─── Memory: Semantic ────────────────────────────────────────────────────────
 
 
-async def search_semantic(args: dict, *, project_id: UUID | None, caller_id: str, conn) -> Any:
+async def search_semantic(
+    args: dict, *, project_id: UUID | None, caller_id: str, conn
+) -> Any:
     slug = args.get("project_slug", "*")
     query_text = args["query"]
     embedding = embed(query_text)
@@ -97,42 +99,128 @@ async def search_semantic(args: dict, *, project_id: UUID | None, caller_id: str
     # pure-vector path when `settings.hybrid_search_enabled` is false or the
     # query text is empty. REQ-004 (backward-compatible search API).
     if slug == "*":
-        results = await repository.search_semantic("*", embedding, args.get("limit", 5), artifact_type, query_text=query_text)
+        results = await repository.search_semantic(
+            "*", embedding, args.get("limit", 5), artifact_type, query_text=query_text
+        )
     else:
-        results = await repository.search_semantic(project_id, embedding, args.get("limit", 5), artifact_type, query_text=query_text)
+        results = await repository.search_semantic(
+            project_id,
+            embedding,
+            args.get("limit", 5),
+            artifact_type,
+            query_text=query_text,
+        )
     return [
-        {"name": a.name, "type": a.type, "status": a.status, "project_id": str(a.project_id), "content": a.content[:500]}
+        {
+            "name": a.name,
+            "type": a.type,
+            "status": a.status,
+            "project_id": str(a.project_id),
+            "content": a.content[:500],
+        }
         for a in results
     ]
 
 
-async def read_artifact(args: dict, *, project_id: UUID | None, caller_id: str, conn) -> Any:
+async def read_artifact(
+    args: dict, *, project_id: UUID | None, caller_id: str, conn
+) -> Any:
     artifact = await repository.get_artifact(project_id, args["name"])
     if not artifact:
         return {"error": f"Artifact '{args['name']}' not found."}
     return artifact.model_dump()
 
 
-async def list_artifacts(args: dict, *, project_id: UUID | None, caller_id: str, conn) -> Any:
+async def list_artifacts(
+    args: dict, *, project_id: UUID | None, caller_id: str, conn
+) -> Any:
     artifact_type = ArtifactType(args["type"]) if args.get("type") else None
     artifact_status = ArtifactStatus(args["status"]) if args.get("status") else None
-    results = await repository.list_artifacts(project_id, artifact_type, artifact_status)
-    return [{"name": a.name, "type": a.type, "status": a.status} for a in results]
+    results = await repository.list_artifacts(
+        project_id, artifact_type, artifact_status
+    )
+    # `id` + `updated_at` are the content-free freshness oracle for the
+    # working-context content cache (working-context-content-cache REQ-008):
+    # one cheap list call tells a consumer which cached entries are still fresh.
+    # `updated_at` is left as a datetime so the `_json(default=str)` path
+    # stringifies it identically to `read_artifact`'s model_dump, keeping the
+    # cache-vs-oracle comparison byte-exact. Still content-free (no `content`).
+    return [
+        {
+            "id": a.id,
+            "name": a.name,
+            "type": a.type,
+            "status": a.status,
+            "updated_at": a.updated_at,
+        }
+        for a in results
+    ]
+
+
+async def read_change_bundle(
+    args: dict, *, project_id: UUID | None, caller_id: str, conn
+) -> Any:
+    """Aggregate every artifact of a named change into one response.
+
+    Holistic phases (verify, archive) use this to replace N point reads
+    with a single call. Membership is resolved by `metadata.change_name`
+    — the source of truth every phase sets at creation — NOT by
+    `artifact_relationships`, which are optional and may be incomplete
+    (read-change-bundle REQ-001). Proposal/design/specs carry full
+    `content`; tasks are summarized to `{name, status}` and `task_count`
+    makes completeness checkable (REQ-002). No `etag`/version token is
+    emitted (REQ-003). Additive — no existing tool changes (REQ-004).
+    """
+    change_name = args["change_name"]
+    artifacts = await repository.list_artifacts(project_id)
+    members = [
+        a for a in artifacts if (a.metadata or {}).get("change_name") == change_name
+    ]
+    if not members:
+        return {"error": f"No artifacts found for change '{change_name}'."}
+
+    def _first(kind: ArtifactType) -> Any:
+        for a in members:
+            if a.type == kind:
+                return a.model_dump()
+        return None
+
+    tasks = [
+        {"name": a.name, "status": a.status}
+        for a in members
+        if a.type == ArtifactType.task
+    ]
+    return {
+        "proposal": _first(ArtifactType.proposal),
+        "design": _first(ArtifactType.design),
+        "specs": [a.model_dump() for a in members if a.type == ArtifactType.spec],
+        "tasks": tasks,
+        "task_count": len(tasks),
+    }
 
 
 # ─── Memory: Episodic ────────────────────────────────────────────────────────
 
 
-async def recall_episodes(args: dict, *, project_id: UUID | None, caller_id: str, conn) -> Any:
+async def recall_episodes(
+    args: dict, *, project_id: UUID | None, caller_id: str, conn
+) -> Any:
     embedding = embed(args["query"])
     traces = await trace_repository.recall(project_id, embedding, args.get("limit", 5))
     return [
-        {"action": t.action, "query": t.query, "result_summary": t.result_summary, "created_at": str(t.created_at)}
+        {
+            "action": t.action,
+            "query": t.query,
+            "result_summary": t.result_summary,
+            "created_at": str(t.created_at),
+        }
         for t in traces
     ]
 
 
-async def record_trace(args: dict, *, project_id: UUID | None, caller_id: str, conn) -> Any:
+async def record_trace(
+    args: dict, *, project_id: UUID | None, caller_id: str, conn
+) -> Any:
     text = f"{args['action']} {args.get('query', '')} {args.get('result_summary', '')}"
     embedding = embed(text)
     data = TraceCreate(
@@ -150,19 +238,41 @@ async def record_trace(args: dict, *, project_id: UUID | None, caller_id: str, c
 # ─── Memory: Working Context ──────────────────────────────────────────────────
 
 
-async def get_working_context(args: dict, *, project_id: UUID | None, caller_id: str, conn) -> Any:
+async def get_working_context(
+    args: dict, *, project_id: UUID | None, caller_id: str, conn
+) -> Any:
     session = await session_repository.get_or_create(project_id)
-    always_rules = await rule_repository.list_by_trigger(project_id, "always", enabled_only=True)
+    always_rules = await rule_repository.list_by_trigger(
+        project_id, "always", enabled_only=True
+    )
     payload = session.model_dump()
     payload["rules"] = [r.model_dump() for r in always_rules]
     return payload
 
 
-async def update_working_context(args: dict, *, project_id: UUID | None, caller_id: str, conn) -> Any:
+async def update_working_context(
+    args: dict, *, project_id: UUID | None, caller_id: str, conn
+) -> Any:
     session = await session_repository.get_or_create(project_id)
+    context = args.get("context")
+    if context is not None:
+        if "content_cache" in context:
+            cache = context["content_cache"]
+            if isinstance(cache, dict):
+                filtered_cache = {}
+                for k, v in cache.items():
+                    if isinstance(v, dict):
+                        t = v.get("type")
+                        if t == "task" or t == ArtifactType.task.value:
+                            continue
+                        filtered_cache[k] = v
+                context["content_cache"] = filtered_cache
+
     update = SessionUpdate(
-        active_artifact_ids=[UUID(i) for i in args["active_artifact_ids"]] if args.get("active_artifact_ids") else None,
-        context=args.get("context"),
+        active_artifact_ids=[UUID(i) for i in args["active_artifact_ids"]]
+        if args.get("active_artifact_ids")
+        else None,
+        context=context,
     )
     updated = await session_repository.update(project_id, session.id, update)
     return updated.model_dump()
@@ -171,25 +281,36 @@ async def update_working_context(args: dict, *, project_id: UUID | None, caller_
 # ─── Skills ───────────────────────────────────────────────────────────────────
 
 
-async def list_skills(args: dict, *, project_id: UUID | None, caller_id: str, conn) -> Any:
+async def list_skills(
+    args: dict, *, project_id: UUID | None, caller_id: str, conn
+) -> Any:
     skills = await skill_repository.list_skills(project_id)
-    return [{"name": s.name, "description": s.description, "global": s.project_id is None} for s in skills]
+    return [
+        {"name": s.name, "description": s.description, "global": s.project_id is None}
+        for s in skills
+    ]
 
 
-async def get_skill(args: dict, *, project_id: UUID | None, caller_id: str, conn) -> Any:
+async def get_skill(
+    args: dict, *, project_id: UUID | None, caller_id: str, conn
+) -> Any:
     skill = await skill_repository.get_skill(args["name"], project_id)
     if not skill:
         return {"error": f"Skill '{args['name']}' not found."}
     return skill.model_dump()
 
 
-async def suggest_skill(args: dict, *, project_id: UUID | None, caller_id: str, conn) -> Any:
+async def suggest_skill(
+    args: dict, *, project_id: UUID | None, caller_id: str, conn
+) -> Any:
     embedding = embed(args["objective"])
     skills = await skill_repository.suggest(project_id, embedding)
     return [{"name": s.name, "description": s.description} for s in skills]
 
 
-async def create_skill(args: dict, *, project_id: UUID | None, caller_id: str, conn) -> Any:
+async def create_skill(
+    args: dict, *, project_id: UUID | None, caller_id: str, conn
+) -> Any:
     # Global skill when no project_slug was provided (verbatim semantics).
     effective_project_id = project_id if args.get("project_slug") else None
     steps = [SkillStep(**s) for s in args["workflow_steps"]]
@@ -237,7 +358,9 @@ async def add_rule(args: dict, *, project_id: UUID | None, caller_id: str, conn)
     return rule.model_dump(mode="json")
 
 
-async def list_rules(args: dict, *, project_id: UUID | None, caller_id: str, conn) -> Any:
+async def list_rules(
+    args: dict, *, project_id: UUID | None, caller_id: str, conn
+) -> Any:
     rules = await rule_repository.list_all(
         project_id,
         trigger=args.get("trigger"),
@@ -247,21 +370,27 @@ async def list_rules(args: dict, *, project_id: UUID | None, caller_id: str, con
     return [r.model_dump(mode="json") for r in rules]
 
 
-async def get_harness_checklist(args: dict, *, project_id: UUID | None, caller_id: str, conn) -> Any:
+async def get_harness_checklist(
+    args: dict, *, project_id: UUID | None, caller_id: str, conn
+) -> Any:
     trigger = args.get("trigger")
     if trigger not in VALID_HARNESS_CHECKLIST_TRIGGERS:
         return (
             f"Error: Invalid trigger '{trigger}'. "
             f"Valid values: {', '.join(VALID_HARNESS_CHECKLIST_TRIGGERS)}"
         )
-    rules = await rule_repository.list_by_trigger(project_id, trigger, enabled_only=True)
+    rules = await rule_repository.list_by_trigger(
+        project_id, trigger, enabled_only=True
+    )
     return [r.model_dump() for r in rules]
 
 
 # ─── SDD Artifacts (Protocols) ────────────────────────────────────────────────
 
 
-async def create_artifact(args: dict, *, project_id: UUID | None, caller_id: str, conn) -> Any:
+async def create_artifact(
+    args: dict, *, project_id: UUID | None, caller_id: str, conn
+) -> Any:
     embedding = embed(args["content"])
     data = ArtifactCreate(
         project_id=project_id,
@@ -272,23 +401,31 @@ async def create_artifact(args: dict, *, project_id: UUID | None, caller_id: str
         metadata=args.get("metadata", {}),
     )
     artifact = await repository.create_artifact(data, embedding)
-    return f"Artifact '{artifact.name}' ({artifact.type}) created with id {artifact.id}."
+    return (
+        f"Artifact '{artifact.name}' ({artifact.type}) created with id {artifact.id}."
+    )
 
 
-async def update_artifact(args: dict, *, project_id: UUID | None, caller_id: str, conn) -> Any:
+async def update_artifact(
+    args: dict, *, project_id: UUID | None, caller_id: str, conn
+) -> Any:
     update = ArtifactUpdate(
         content=args.get("content"),
         status=ArtifactStatus(args["status"]) if args.get("status") else None,
         metadata=args.get("metadata"),
     )
     new_embedding = embed(args["content"]) if args.get("content") else None
-    artifact = await repository.update_artifact(project_id, args["name"], update, new_embedding)
+    artifact = await repository.update_artifact(
+        project_id, args["name"], update, new_embedding
+    )
     if not artifact:
         return {"error": f"Artifact '{args['name']}' not found."}
     return f"Artifact '{artifact.name}' updated."
 
 
-async def validate_artifact(args: dict, *, project_id: UUID | None, caller_id: str, conn) -> Any:
+async def validate_artifact(
+    args: dict, *, project_id: UUID | None, caller_id: str, conn
+) -> Any:
     artifact = await repository.get_artifact(project_id, args["name"])
     if not artifact:
         return {"error": f"Artifact '{args['name']}' not found."}
@@ -296,7 +433,9 @@ async def validate_artifact(args: dict, *, project_id: UUID | None, caller_id: s
     return {"valid": not issues, "issues": issues}
 
 
-async def link_artifacts(args: dict, *, project_id: UUID | None, caller_id: str, conn) -> Any:
+async def link_artifacts(
+    args: dict, *, project_id: UUID | None, caller_id: str, conn
+) -> Any:
     source = await repository.get_artifact(project_id, args["source_name"])
     target = await repository.get_artifact(project_id, args["target_name"])
     if not source:
@@ -307,34 +446,55 @@ async def link_artifacts(args: dict, *, project_id: UUID | None, caller_id: str,
     return f"Linked '{source.name}' → '{target.name}' ({args['relationship_type']})."
 
 
-async def get_relationships(args: dict, *, project_id: UUID | None, caller_id: str, conn) -> Any:
+async def get_relationships(
+    args: dict, *, project_id: UUID | None, caller_id: str, conn
+) -> Any:
     artifact = await repository.get_artifact(project_id, args["name"])
     if not artifact:
         return {"error": f"Artifact '{args['name']}' not found."}
     return await repository.get_relationships(artifact.id)
 
 
-async def list_projects(args: dict, *, project_id: UUID | None, caller_id: str, conn) -> Any:
+async def list_projects(
+    args: dict, *, project_id: UUID | None, caller_id: str, conn
+) -> Any:
     projects = await project_repository.list_projects()
-    return [{"id": str(p.id), "slug": p.slug, "name": p.name, "description": p.description} for p in projects]
+    return [
+        {"id": str(p.id), "slug": p.slug, "name": p.name, "description": p.description}
+        for p in projects
+    ]
 
 
-async def create_project(args: dict, *, project_id: UUID | None, caller_id: str, conn) -> Any:
+async def create_project(
+    args: dict, *, project_id: UUID | None, caller_id: str, conn
+) -> Any:
     slug = args["slug"].strip()
     name = args["name"].strip()
     existing = await project_repository.get_project_by_slug(slug)
     if existing:
-        return {"id": str(existing.id), "slug": existing.slug, "name": existing.name, "already_existed": True}
+        return {
+            "id": str(existing.id),
+            "slug": existing.slug,
+            "name": existing.name,
+            "already_existed": True,
+        }
     project = await project_repository.create_project(
         ProjectCreate(slug=slug, name=name, description=args.get("description"))
     )
-    return {"id": str(project.id), "slug": project.slug, "name": project.name, "already_existed": False}
+    return {
+        "id": str(project.id),
+        "slug": project.slug,
+        "name": project.name,
+        "already_existed": False,
+    }
 
 
 # ─── OpenSpec Import ──────────────────────────────────────────────────────────
 
 
-async def openspec_import(args: dict, *, project_id: UUID | None, caller_id: str, conn) -> Any:
+async def openspec_import(
+    args: dict, *, project_id: UUID | None, caller_id: str, conn
+) -> Any:
     root = Path(args["path"])
     if not root.exists():
         return {"error": f"path does not exist: {root}"}
@@ -358,11 +518,12 @@ async def openspec_import(args: dict, *, project_id: UUID | None, caller_id: str
 ExecutorFn = Callable[..., Awaitable[Any]]
 
 # `name -> function` map. The keys are the canonical MCP tool names; the
-# set is exactly the 22 tools declared in `PgToolRegistry`.
+# set is exactly the 23 tools declared in `PgToolRegistry`.
 EXECUTORS: dict[str, ExecutorFn] = {
     "search_semantic": search_semantic,
     "read_artifact": read_artifact,
     "list_artifacts": list_artifacts,
+    "read_change_bundle": read_change_bundle,
     "recall_episodes": recall_episodes,
     "record_trace": record_trace,
     "get_working_context": get_working_context,
@@ -405,7 +566,9 @@ class PgToolExecutor:
         if func is None:
             raise KeyError(f"no executor registered for tool {tool.name!r}")
         slug = parameters.get("project_slug")
-        tool_accepts_project = "project_slug" in (tool.input_schema.get("properties") or {})
+        tool_accepts_project = "project_slug" in (
+            tool.input_schema.get("properties") or {}
+        )
         if slug == "*":
             project_id: UUID | None = None
         elif slug is not None:

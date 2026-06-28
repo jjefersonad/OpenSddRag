@@ -11,10 +11,10 @@ PostgreSQL — a dummy `conn_factory` and an empty `tool_executors`
 mapping are enough to construct it.
 
 Note on the count: `task-infra-pg-3` text says "21 tools", but the
-canonical source `mcp/server.py:list_tools()` declares 22 (the task's
-"21" is a stale off-by-one — the design doc enumerates 22 names while
-labelling them "21"). We assert against the canonical name list so the
-test never drifts when tools are added or removed.
+canonical source `mcp/server.py:list_tools()` now declares 23 (the
+original 22 plus `read_change_bundle`, added by the
+`reduce-token-consumption` change). We assert against the canonical name
+list so the test never drifts when tools are added or removed.
 """
 
 from __future__ import annotations
@@ -30,6 +30,7 @@ _EXPECTED_NAMES = frozenset(
         "search_semantic",
         "read_artifact",
         "list_artifacts",
+        "read_change_bundle",
         "recall_episodes",
         "record_trace",
         "get_working_context",
