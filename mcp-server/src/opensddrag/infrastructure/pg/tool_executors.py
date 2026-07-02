@@ -45,6 +45,7 @@ from uuid import UUID
 
 from opensddrag.config import settings
 from opensddrag.core.domain.artifact_validation import validate as _validate
+from opensddrag.core.domain.errors import ProjectNotResolvableError
 from opensddrag.core.domain.rule_constants import (
     VALID_HARNESS_CHECKLIST_TRIGGERS,
     VALID_RULE_CATEGORIES,
@@ -52,6 +53,7 @@ from opensddrag.core.domain.rule_constants import (
     VALID_RULE_TRIGGERS,
 )
 from opensddrag.core.domain.tool import Tool
+from opensddrag.core.ports.authentication import Caller
 from opensddrag.db import (
     project_repository,
     repository,
@@ -76,10 +78,26 @@ from opensddrag.models.skill import SkillCreate, SkillStep
 from opensddrag.models.trace import TraceCreate
 
 
-async def _resolve_project_id(project_slug: str | None) -> UUID:
-    """Resolve a project slug (or the configured default) to its id."""
-    slug = project_slug or settings.opensddrag_project
-    project = await project_repository.require_project(slug)
+async def _resolve_project_id(slug: str | None, caller_slug: str | None) -> UUID:
+    """Resolve the active project to its UUID with four-level precedence.
+
+    1. explicit ``slug`` tool arg (highest)
+    2. ``caller_slug`` — the auth-bound project on the Caller (HTTP callers)
+    3. ``settings.opensddrag_project`` — env default, stdio only (when caller_slug is None)
+    4. raise ProjectNotResolvableError — never fall back to a phantom project
+    """
+    if slug:
+        effective = slug
+    elif caller_slug is not None:
+        effective = caller_slug
+    elif settings.opensddrag_project:
+        effective = settings.opensddrag_project
+    else:
+        raise ProjectNotResolvableError(
+            "no project resolved: pass project_slug in the tool call or ensure"
+            " the API key is bound to a project"
+        )
+    project = await project_repository.require_project(effective)
     return project.id
 
 
@@ -561,7 +579,7 @@ class PgToolExecutor:
     threads the `Caller` through — no current tool body reads it.
     """
 
-    async def execute(self, tool: Tool, parameters: dict[str, Any]) -> Any:
+    async def execute(self, tool: Tool, parameters: dict[str, Any], caller: Caller) -> Any:
         func = EXECUTORS.get(tool.name)
         if func is None:
             raise KeyError(f"no executor registered for tool {tool.name!r}")
@@ -572,16 +590,15 @@ class PgToolExecutor:
         if slug == "*":
             project_id: UUID | None = None
         elif slug is not None:
-            project_id = await _resolve_project_id(slug)
+            project_id = await _resolve_project_id(slug, caller.project_slug)
         elif tool_accepts_project:
-            # Caller omitted project_slug on a tool that accepts it → use default.
-            project_id = await _resolve_project_id(None)
+            project_id = await _resolve_project_id(None, caller.project_slug)
         else:
             # Global tool (e.g. list_projects, create_project) — no project context.
             project_id = None
         async with get_conn() as conn:
             return await func(
-                parameters, project_id=project_id, caller_id="stdio", conn=conn
+                parameters, project_id=project_id, caller_id=caller.caller_id, conn=conn
             )
 
 

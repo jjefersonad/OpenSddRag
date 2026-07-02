@@ -25,6 +25,7 @@ from opensddrag.core.domain.permission import Permission
 from opensddrag.core.domain.response import Response
 from opensddrag.core.ports.authentication import Caller
 from opensddrag.infrastructure.composition import UseCases, build_use_cases
+from opensddrag.mcp.context import get_caller_project
 from opensddrag.infrastructure.pg.tool_executors import EXECUTORS, PgToolExecutor
 
 server = Server("opensddrag")
@@ -46,13 +47,10 @@ class MCPServerAdapter:
     def __init__(self, use_cases: UseCases) -> None:
         self._use_cases = use_cases
 
-    def _resolve_caller(self, request_or_scope: Any = None) -> Caller:
-        if request_or_scope is not None:
-            project_slug = getattr(
-                getattr(request_or_scope, "state", None), "project_slug", None
-            )
-            caller_id = project_slug or "http"
-            return Caller(caller_id=caller_id, permission=Permission.ADMIN)
+    def _resolve_caller(self) -> Caller:
+        slug = get_caller_project()
+        if slug is not None:
+            return Caller(caller_id="http", permission=Permission.ADMIN, project_slug=slug)
         return Caller(caller_id="stdio", permission=Permission.ADMIN)
 
     async def list_tools(self) -> list[types.Tool]:
