@@ -48,7 +48,7 @@ async def list_keys(project_id: UUID | None = None) -> list[ApiKey]:
                 await cur.execute("SELECT * FROM api_keys ORDER BY created_at DESC")
             else:
                 await cur.execute(
-                    "SELECT * FROM api_keys WHERE project_id = %s OR project_id IS NULL ORDER BY created_at DESC",
+                    "SELECT * FROM api_keys WHERE project_id = %s ORDER BY created_at DESC",
                     (str(project_id),),
                 )
             rows = await cur.fetchall()
