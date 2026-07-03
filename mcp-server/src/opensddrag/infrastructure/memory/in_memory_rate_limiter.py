@@ -34,7 +34,6 @@ import time
 from collections import defaultdict, deque
 from typing import Deque
 
-from opensddrag.core.ports.rate_limiter import RateLimiterPort
 
 
 # Default quota and window. Matches the spec's `mcp-infrastructure-spec`

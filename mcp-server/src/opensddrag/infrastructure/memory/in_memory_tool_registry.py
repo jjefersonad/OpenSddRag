@@ -18,7 +18,6 @@ from __future__ import annotations
 from typing import Iterable
 
 from opensddrag.core.domain.tool import Tool
-from opensddrag.core.ports.tool_registry import ToolRegistryPort
 
 
 class InMemoryToolRegistry:

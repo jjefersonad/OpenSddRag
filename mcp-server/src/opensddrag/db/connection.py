@@ -1,7 +1,6 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-import psycopg
 from psycopg_pool import AsyncConnectionPool
 
 from opensddrag.config import settings

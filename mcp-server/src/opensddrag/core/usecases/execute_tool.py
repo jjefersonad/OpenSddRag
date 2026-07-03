@@ -132,6 +132,7 @@ class ExecuteToolUseCase:
         effective_caller = Caller(
             caller_id=caller.caller_id,
             permission=resolved_caller.permission,
+            project_slug=caller.project_slug,
         )
 
         # ── Step 3: rate limit ───────────────────────────────────────
@@ -202,7 +203,7 @@ class ExecuteToolUseCase:
         # clock, can jump backwards on NTP correction).
         t0 = time.perf_counter()
         try:
-            executor_result = await self._tool_executor.execute(tool, normalized_parameters)
+            executor_result = await self._tool_executor.execute(tool, normalized_parameters, effective_caller)
         except Exception as exc:  # noqa: BLE001 — spec REQ-001 catch-all
             duration_ms = int((time.perf_counter() - t0) * 1000)
             # Log the exception with `last_resort=True` per the spec

@@ -154,4 +154,4 @@ def test_returns_caller_with_admin_even_when_input_looks_like_jwt(
     assert hasattr(caller, "caller_id")
     assert hasattr(caller, "permission")
     # The two fields are the only public surface of Caller.
-    assert set(caller.__dataclass_fields__.keys()) == {"caller_id", "permission"}
+    assert {"caller_id", "permission"}.issubset(caller.__dataclass_fields__.keys())

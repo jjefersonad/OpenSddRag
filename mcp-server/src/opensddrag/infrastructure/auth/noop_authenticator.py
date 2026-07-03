@@ -31,7 +31,7 @@ import from `mcp/`, `db/`, `embedding/`, or `config/`.
 from __future__ import annotations
 
 from opensddrag.core.domain.permission import Permission
-from opensddrag.core.ports.authentication import AuthenticationPort, Caller
+from opensddrag.core.ports.authentication import Caller
 
 
 class NoopAuthenticator:
