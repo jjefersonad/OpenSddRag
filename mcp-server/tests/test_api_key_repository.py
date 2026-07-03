@@ -1,8 +1,11 @@
+import uuid
 from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from opensddrag.db import api_key_repository
+from opensddrag.db import api_key_repository, project_repository
+from opensddrag.db.connection import get_conn
+from opensddrag.models.project import ProjectCreate
 
 
 @pytest.mark.asyncio
@@ -67,3 +70,73 @@ async def test_list_keys():
 
     # Clean up
     await api_key_repository.revoke_key(key_record.id)
+
+
+async def _make_project() -> "uuid.UUID":
+    """Create a throwaway project and return its id.
+
+    Fresh projects have brand-new UUIDs that no pre-existing key
+    references, so per-project assertions are robust against leftover
+    keys from other tests.
+    """
+    suffix = uuid.uuid4().hex[:8]
+    project = await project_repository.create_project(
+        ProjectCreate(slug=f"list-keys-test-{suffix}", name=f"list-keys-test-{suffix}")
+    )
+    return project.id
+
+
+async def _delete_projects(*project_ids: "uuid.UUID") -> None:
+    """Delete test projects; `api_keys.project_id` CASCADEs, removing
+    the keys bound to them (see migration 002_api_keys.sql).
+    """
+    async with get_conn() as conn:
+        async with conn.cursor() as cur:
+            for pid in project_ids:
+                await cur.execute("DELETE FROM projects WHERE id = %s", (str(pid),))
+
+
+@pytest.mark.asyncio
+async def test_list_keys_strict_project_filter():
+    """Regression guard for `fix-multitenant-deploy-regressions`
+    (api-key-listing-spec REQ-001). A project filter scopes results to
+    that project only — global (`project_id IS NULL`) keys never leak
+    into a filtered listing, and two distinct projects report distinct
+    sets. Before the fix, `list_keys` used `WHERE project_id = %s OR
+    project_id IS NULL`, so every `--project X` returned the same list.
+    """
+    project_a = await _make_project()
+    project_b = await _make_project()
+    project_empty = await _make_project()  # a project with no bound keys
+
+    global_key, _ = await api_key_repository.create_key(description="strict-global")
+    key_a, _ = await api_key_repository.create_key(
+        description="strict-a", project_id=project_a
+    )
+    key_b, _ = await api_key_repository.create_key(
+        description="strict-b", project_id=project_b
+    )
+
+    try:
+        # Scenario: "Filtering by a project without bound keys" — empty
+        # regardless of how many global keys exist.
+        assert await api_key_repository.list_keys(project_id=project_empty) == []
+
+        # Scenario: "Two different projects return different sets" — each
+        # returns only its own key, never the other's and never globals.
+        a_keys = await api_key_repository.list_keys(project_id=project_a)
+        b_keys = await api_key_repository.list_keys(project_id=project_b)
+        assert [k.id for k in a_keys] == [key_a.id]
+        assert [k.id for k in b_keys] == [key_b.id]
+        assert global_key.id not in {k.id for k in a_keys}
+        assert global_key.id not in {k.id for k in b_keys}
+
+        # Scenario: "Global keys still listed unfiltered" — the
+        # unfiltered call returns everything (global + project-bound).
+        all_ids = {k.id for k in await api_key_repository.list_keys(project_id=None)}
+        assert {global_key.id, key_a.id, key_b.id} <= all_ids
+    finally:
+        # Deleting the projects cascades to key_a / key_b; revoke the
+        # global key (soft) as the sibling tests do.
+        await api_key_repository.revoke_key(global_key.id)
+        await _delete_projects(project_a, project_b, project_empty)

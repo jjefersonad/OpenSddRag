@@ -30,13 +30,14 @@ from __future__ import annotations
 from typing import Any, Protocol, runtime_checkable
 
 from opensddrag.core.domain.tool import Tool
+from opensddrag.core.ports.authentication import Caller
 
 
 @runtime_checkable
 class ToolExecutorPort(Protocol):
     """Runs the work of a single tool invocation."""
 
-    async def execute(self, tool: Tool, parameters: dict[str, Any]) -> Any:
+    async def execute(self, tool: Tool, parameters: dict[str, Any], caller: Caller) -> Any:
         """Execute `tool` with `parameters` and return its result.
 
         Coroutine: the concrete executors perform async DB I/O (the
@@ -74,4 +75,4 @@ class ToolExecutorPort(Protocol):
         ...
 
 
-__all__ = ["ToolExecutorPort"]
+__all__ = ["Caller", "ToolExecutorPort"]

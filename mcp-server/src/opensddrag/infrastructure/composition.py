@@ -32,7 +32,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from opensddrag.core.domain.tool import Tool
-from opensddrag.core.ports.authentication import AuthenticationPort
+from opensddrag.core.ports.authentication import AuthenticationPort, Caller
 from opensddrag.core.ports.executor import ToolExecutorPort
 from opensddrag.core.ports.logger import LoggerPort
 from opensddrag.core.ports.rate_limiter import RateLimiterPort
@@ -92,14 +92,16 @@ class _MappingToolExecutor:
     def __init__(self, executors: dict[str, ToolExecutorPort]) -> None:
         self._executors = executors
 
-    async def execute(self, tool: Tool, parameters: dict[str, Any]) -> Any:
+    async def execute(
+        self, tool: Tool, parameters: dict[str, Any], caller: Caller
+    ) -> Any:
         executor = self._executors.get(tool.name)
         if executor is None:
             raise KeyError(
                 f"no executor wired for tool {tool.name!r}; the composition "
                 f"root was built without an entry for it (see task-adapter-1)"
             )
-        return await executor.execute(tool, parameters)
+        return await executor.execute(tool, parameters, caller)
 
 
 def _use_postgres(settings: Any) -> bool:

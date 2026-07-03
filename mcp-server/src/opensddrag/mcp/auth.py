@@ -6,6 +6,7 @@ from starlette.responses import Response
 
 from opensddrag.config import settings
 from opensddrag.db import api_key_repository
+from opensddrag.mcp.context import set_caller_project
 
 
 def _json_response(status_code: int, error: str) -> Response:
@@ -52,4 +53,5 @@ class AuthMiddleware(BaseHTTPMiddleware):
             project_slug = request.headers.get("X-Project") or settings.opensddrag_project
             request.state.project_slug = project_slug
 
+        set_caller_project(project_slug)
         return await call_next(request)

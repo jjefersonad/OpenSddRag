@@ -53,6 +53,7 @@ class Caller:
 
     caller_id: str
     permission: Permission
+    project_slug: str | None = None
 
 
 @runtime_checkable

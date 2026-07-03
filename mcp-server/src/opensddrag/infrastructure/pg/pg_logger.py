@@ -33,7 +33,6 @@ import sys
 from datetime import datetime, timezone
 from typing import Any, TextIO
 
-from opensddrag.core.ports.logger import LoggerPort
 
 
 class PgLogger:

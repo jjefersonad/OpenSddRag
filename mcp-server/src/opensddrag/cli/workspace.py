@@ -2,14 +2,13 @@
 
 import asyncio
 import json
-import os
 from pathlib import Path
 
 import typer
 from rich.console import Console
 from rich.prompt import Confirm, Prompt
 
-from opensddrag.db import project_repository, skill_repository
+from opensddrag.db import project_repository
 from opensddrag.models.project import ProjectCreate
 
 app = typer.Typer(help="Connect a project directory to the OpenSddRag Harness.")
@@ -189,10 +188,10 @@ def init(
                 console.print("  [yellow]CLAUDE.md already has OpenSddRag section — skipping.[/yellow]")
             else:
                 claude_md.write_text(content.rstrip() + "\n" + block)
-                console.print(f"  [green]✓ Appended OpenSddRag section to CLAUDE.md[/green]")
+                console.print("  [green]✓ Appended OpenSddRag section to CLAUDE.md[/green]")
         else:
             claude_md.write_text(f"# {name}\n" + block)
-            console.print(f"  [green]✓ Created CLAUDE.md[/green]")
+            console.print("  [green]✓ Created CLAUDE.md[/green]")
 
         # 5. Write local opensddrag.yaml
         yaml_path = cwd / "opensddrag.yaml"
@@ -202,7 +201,7 @@ def init(
                 f"project: {slug}\n"
                 f"mcp:\n{mcp_section}\n"
             )
-            console.print(f"  [green]✓ Created opensddrag.yaml[/green]")
+            console.print("  [green]✓ Created opensddrag.yaml[/green]")
 
         console.print(f"\n[bold green]✓ Project '{slug}' connected to OpenSddRag![/bold green]")
         console.print("\nNext steps:")
