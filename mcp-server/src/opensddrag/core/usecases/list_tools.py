@@ -22,9 +22,7 @@ from __future__ import annotations
 
 from opensddrag.core.domain.permission import (
     Allow,
-    Deny,
     Permission,
-    RequireConfirmation,
 )
 from opensddrag.core.domain.tool import Tool
 from opensddrag.core.ports.authorization import AuthorizationPolicyPort

@@ -1,4 +1,3 @@
-import asyncio
 
 from opensddrag.config import settings
 from opensddrag.db import project_repository

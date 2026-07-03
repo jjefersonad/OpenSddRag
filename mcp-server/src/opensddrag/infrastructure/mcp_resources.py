@@ -8,7 +8,6 @@ database repositories so that `mcp/server.py` has zero direct `db` imports
 from __future__ import annotations
 
 import json
-from typing import Any
 from uuid import UUID
 
 from opensddrag.db import project_repository, repository

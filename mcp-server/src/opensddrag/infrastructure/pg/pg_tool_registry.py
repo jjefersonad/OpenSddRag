@@ -37,7 +37,7 @@ from typing import Any, Callable
 # `core.ports.authentication`.
 from opensddrag.core.ports.authentication import Permission
 from opensddrag.core.ports.executor import ToolExecutorPort
-from opensddrag.core.ports.tool_registry import Tool, ToolRegistryPort
+from opensddrag.core.ports.tool_registry import Tool
 
 
 # ── Permission classification ────────────────────────────────────────────────
