@@ -51,11 +51,14 @@ The implementation MUST satisfy every acceptance criterion. Pause and ask if any
 ### Step 6 — Validate against spec requirements
 For each acceptance criterion (REQ-NNN): confirm the implementation satisfies it and no spec scenario is broken.
 
+### Step 7 — Falsify the change
+For every symbol, value, or file touched in Step 5, actively try to prove the change incomplete: search the affected code/config for other call sites, importers, config consumers, or re-exports using Read/Grep/Bash — not a re-read of the proposal, design, or full specs bundle. If a consumer also needs updating, fix it now and re-run Step 6 against it. If none are found, proceed. This step targets the codebase, not the SDD planning artifacts, and must not become a reason to widen the Step 1 minimal-read floor.
+
 ${harnessChecklistBlock(slug, "on_apply", "Marking the task archived")}
-### Step 7 — Mark the task done
+### Step 8 — Mark the task done
 \`update_artifact(name="<task-name>", status="archived", project_slug="${slug}")\`
 
-### Step 8 — Record and check remaining work
+### Step 9 — Record and check remaining work
 \`record_trace(action="apply_task", result_summary="Completed task: <task-name>", artifact_id="<artifact-id>", project_slug="${slug}")\`
 \`list_artifacts(type="task", status="draft", project_slug="${slug}")\`
 - If tasks remain: "Task complete. Run /opsr:apply <change-name> for the next task."
@@ -67,6 +70,7 @@ ${harnessChecklistBlock(slug, "on_apply", "Marking the task archived")}
 
 ## Important rules
 - Read the design and the task's spec before implementing — never code from the task alone. Do not re-read the proposal during apply.
+- Before marking a task archived, run Step 7 (falsify the change): trace usages/dependencies of whatever changed instead of assuming the initial minimal read was sufficient. Keep this to codebase tracing — it is not a reason to re-read the proposal/design/specs bundle.
 - Run the harness checklist (on_apply) BEFORE marking a task archived; STOP on any error-severity rule.
 - One task at a time; do not batch-archive tasks.
 `,
