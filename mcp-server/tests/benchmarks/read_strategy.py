@@ -18,6 +18,12 @@ Why characters, and why a model instead of live tool calls:
 Each tier of the rollout adds a `variant` and must show a net reduction over the
 previous baseline. Tier 1 (this task) trims the `apply` phase only; `verify` and
 `archive` are unchanged and therefore identical across the two variants.
+
+Note (`apply-verify-before-done`): that change adds a "Falsify the change" step
+to `client/src/templates/skills/apply.js` that traces usages/dependencies via
+local Read/Grep/Bash, not `read_artifact`/`read_change_bundle`. It is
+intentionally invisible to this benchmark, which only counts characters pulled
+through the MCP read tools — no new variant was added for it.
 """
 
 from __future__ import annotations
