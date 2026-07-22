@@ -1,5 +1,9 @@
+export const CLAUDE_MD_START_MARKER = "<!-- opensddrag:start -->";
+export const CLAUDE_MD_END_MARKER = "<!-- opensddrag:end -->";
+
 export function renderClaudeMdBlock({ slug, serverUrl }) {
   return `
+${CLAUDE_MD_START_MARKER}
 ---
 
 ## OpenSddRag — SDD + Harness
@@ -60,10 +64,40 @@ search_semantic(query="<topic>", project_slug="${slug}")
 \`\`\`
 /opsr:propose → /opsr:spec → /opsr:design → /opsr:tasks → /opsr:apply → /opsr:archive
 \`\`\`
+${CLAUDE_MD_END_MARKER}
 `;
 }
 
 export function renderClaudeMdStandalone({ projectName, slug, serverUrl }) {
   return `# ${projectName}
 ${renderClaudeMdBlock({ slug, serverUrl })}`;
+}
+
+/**
+ * Insert or refresh the OpenSddRag block inside an existing CLAUDE.md.
+ * Re-running `init` with a different slug/server must not leave stale values
+ * behind — the marker-delimited block is always replaced in place. Files
+ * written before markers existed are migrated by cutting from the block's
+ * heading (or its preceding `---` divider) to EOF, since that block was
+ * always appended last.
+ */
+export function upsertClaudeMdBlock(existingContent, { slug, serverUrl }) {
+  const newBlock = renderClaudeMdBlock({ slug, serverUrl }).trim();
+
+  const markerRegex = new RegExp(
+    `${CLAUDE_MD_START_MARKER}[\\s\\S]*?${CLAUDE_MD_END_MARKER}`,
+  );
+  if (markerRegex.test(existingContent)) {
+    return { content: existingContent.replace(markerRegex, newBlock), action: "updated" };
+  }
+
+  const legacyHeadingIdx = existingContent.indexOf("## OpenSddRag — SDD + Harness");
+  if (legacyHeadingIdx !== -1) {
+    const before = existingContent.slice(0, legacyHeadingIdx);
+    const dividerIdx = before.lastIndexOf("\n---\n");
+    const cutIdx = dividerIdx !== -1 ? dividerIdx : legacyHeadingIdx;
+    return { content: existingContent.slice(0, cutIdx).trimEnd() + "\n" + newBlock + "\n", action: "migrated" };
+  }
+
+  return { content: existingContent.trimEnd() + "\n" + newBlock + "\n", action: "appended" };
 }

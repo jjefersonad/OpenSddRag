@@ -44,15 +44,32 @@ If $ARGUMENTS names a task, use it. Otherwise:
 \`update_artifact(name="<task-name>", status="active", project_slug="${slug}")\`
 \`update_working_context(context={"current_task": "<task-name>"}, project_slug="${slug}")\`
 
-### Step 5 — Implement the task
-Write the code changes required by the task using Edit/Write/Bash (local files — this is expected).
-The implementation MUST satisfy every acceptance criterion. Pause and ask if anything is unclear — do not guess.
+### Step 5 — Implement the task (RED → GREEN → REFACTOR per testable unit)
+The task's acceptance criteria were decomposed into one or more unit-level \`test\` artifacts by \`/opsr:tasks\` (Step 3.2 in that skill). Every \`test\` artifact linked to this task via \`implements\` defines one testable unit you MUST drive through the micro-cycle below. The cycle is **stack-agnostic** — describe the behaviour the test asserts, not the runner's CLI; whichever test runner the target project uses (pytest, vitest, jest, go test, etc.) the discipline is the same.
 
-### Step 6 — Validate against spec requirements
-For each acceptance criterion (REQ-NNN): confirm the implementation satisfies it and no spec scenario is broken.
+For each linked unit-level \`test\` artifact, in order:
+
+1. **Read the test artifact** for the unit it covers:
+   \`read_artifact(name="<test-artifact-name>", project_slug="${slug}")\`
+2. **RED — write the failing test first.** In the target project's test directory, write the test that asserts the behaviour described in the \`test\` artifact's content. Run the test using the project's native runner; confirm it fails for the right reason (the assertion is wrong because the code doesn't exist yet). Then update the \`test\` artifact:
+   \`update_artifact(name="<test-artifact-name>", metadata={"test_status": "failing"}, project_slug="${slug}")\`
+   Do NOT write any production code before this step completes. If you find yourself about to "stub" production code to make the test compile, that's still production code — back up and finish RED with the test failing for the right reason.
+3. **GREEN — minimal implementation.** Write the smallest amount of production code that makes the failing test pass. Re-run the test; confirm it now passes. Then update the \`test\` artifact:
+   \`update_artifact(name="<test-artifact-name>", metadata={"test_status": "passing"}, project_slug="${slug}")\`
+4. **REFACTOR — clean up while staying green.** With the test green, refactor the production code (and/or the test) for clarity, naming, or duplication. Re-run the test after every refactor. \`test_status\` MUST remain \`"passing"\` throughout — if a refactor regresses the test, fix it before moving on. The \`test_status\` field on the artifact is updated to \`"passing"\` once after REFACTOR (or earlier, after GREEN) and stays \`"passing"\`.
+5. Repeat steps 1-4 for the next linked unit until every unit-level \`test\` artifact is \`test_status="passing"\`. If the task is \`metadata.test_exempt=true\` (e.g. prompt template, SQL migration), it has no linked units — Step 5 is a no-op and you move directly to Step 6.
+
+The code changes (Edit/Write/Bash on local files) are the expected output of this step, exactly as before. The difference is that they are gated by the per-unit RED → GREEN → REFACTOR loop and accompanied by the \`test_status\` updates on the linked artifacts.
+
+### Step 6 — Validate against spec requirements AND test status
+For each acceptance criterion (REQ-NNN) the task implements, confirm the implementation satisfies it and no spec scenario is broken. Then walk the task's linked unit-level \`test\` artifacts (use \`get_relationships(name="<task-name>", project_slug="${slug}")\`) and confirm every one of them has \`metadata.test_status="passing"\`. If any is still \`"failing"\` or \`"pending"\`, STOP and return to Step 5 to finish that unit's cycle — the harness rule \`tdd-first\` will block archive otherwise.
+
+Only when every unit-level \`test\` is \`"passing"\` (or the task is \`test_exempt\`) should Step 7 run.
 
 ### Step 7 — Falsify the change
 For every symbol, value, or file touched in Step 5, actively try to prove the change incomplete: search the affected code/config for other call sites, importers, config consumers, or re-exports using Read/Grep/Bash — not a re-read of the proposal, design, or full specs bundle. If a consumer also needs updating, fix it now and re-run Step 6 against it. If none are found, proceed. This step targets the codebase, not the SDD planning artifacts, and must not become a reason to widen the Step 1 minimal-read floor.
+
+This step is **unchanged** from the form shipped by \`apply-verify-before-done\` — it addresses hidden dependencies elsewhere in the codebase, a different concern from a unit's own correctness. Do not fold it into REFACTOR and do not widen its scope.
 
 ${harnessChecklistBlock(slug, "on_apply", "Marking the task archived")}
 ### Step 8 — Mark the task done

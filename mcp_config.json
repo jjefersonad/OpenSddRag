@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "opensddrag": {
+      "serverUrl": "http://localhost:8000/mcp",
+      "headers": {
+        "Authorization": "Bearer 5c77efe82fce2489f37554aa46b78e18924b037d7be67ced4f7b1c8116b836b6"
+      }
+    }
+  }
+}

@@ -48,3 +48,11 @@ export async function listProjects(serverUrl, apiKey) {
     return parseToolResult(result);
   }, apiKey);
 }
+
+export async function addRule(serverUrl, projectSlug, rule, apiKey) {
+  return withMcp(serverUrl, async (client) => {
+    const args = { ...rule, project_slug: projectSlug };
+    const result = await client.callTool({ name: "add_rule", arguments: args });
+    return parseToolResult(result);
+  }, apiKey);
+}

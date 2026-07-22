@@ -204,6 +204,29 @@ The Harness is a rule-gate layer built on top of the SDD workflow. It lets you d
 /opsr:harness disable no-raw-sql
 ```
 
+### Built-in rules
+
+Two rules are seeded by `opensddrag-server init` into every project:
+
+| Rule | Trigger | Severity | Purpose |
+|---|---|---|---|
+| `contract-change-map-all-implementers` | `always` | `error` | When a change alters a port/interface/contract, map every implementer (Pg adapter, in-memory adapter, composition root, mocks). Prevents deploy-time `TypeError` from missed adapters. |
+| `tdd-first` | `on_apply` | `error` | Apply is test-first (RED → GREEN → REFACTOR) per testable unit. Stack-agnostic — applies to pytest, vitest, jest, go test. Tasks with `metadata.test_exempt=true` plus a stated reason are exempt. |
+
+### TDD discipline and test artifacts
+
+Every scenario in a spec and every unit covered during apply is a first-class **`test` artifact** in the database (no separate table). The lifecycle is:
+
+1. `/opsr:spec` Step 7 — the scenario-confirmation gate — creates one `test` artifact per confirmed WHEN/THEN (`level=scenario`, `test_status=pending`), linked to the spec via `implements`. The agent must STOP for user confirmation before creating them, even when scenarios look obvious.
+2. `/opsr:tasks` Step 3 — for each testable unit in a task, creates a `test` artifact (`level=unit`, `test_status=pending`) and links it to the task via `implements` *before* `validate_artifact` runs. Tasks with no testable unit (prompt templates, SQL migrations without standalone logic) carry `metadata.test_exempt=true` plus a `## Reason` heading.
+3. `/opsr:apply` Step 5 — the RED → GREEN → REFACTOR cycle, per unit:
+   - **RED** — write a failing test using the project's native runner. Update `test_status` to `"failing"`. No production code yet.
+   - **GREEN** — write the minimal production code to make it pass. Update `test_status` to `"passing"`.
+   - **REFACTOR** — clean up while keeping the test green. `test_status` stays `"passing"`.
+4. `/opsr:verify` Step 5 — recomputes scenario-level `test_status` from its linked unit tests (passing / failing / pending) and lists any non-exempt test that is not `"passing"` as a CRITICAL blocker. The verify report does not recommend `/opsr:archive` while blockers exist.
+
+The `tdd-first` rule (seeded at `init`) blocks `apply` if a non-exempt task would be written without a failing test first. Use `/opsr:harness list` to inspect it, or `/opsr:harness disable tdd-first` if your project legitimately needs a different stance.
+
 ---
 
 ## Server Setup
