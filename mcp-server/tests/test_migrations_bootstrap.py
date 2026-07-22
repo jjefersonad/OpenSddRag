@@ -132,9 +132,10 @@ async def legacy_db_state():
     # idempotently re-apply 004_hybrid_search.sql
     # (ADD COLUMN IF NOT EXISTS / CREATE INDEX IF NOT EXISTS),
     # 005_rate_limit_counters.sql (CREATE TABLE IF NOT EXISTS / CREATE
-    # INDEX IF NOT EXISTS), and 006_api_key_permissions.sql
-    # (ADD COLUMN IF NOT EXISTS / DROP+ADD CONSTRAINT IF EXISTS). End
-    # state: schema_migrations populated, content_tsv intact, artifacts
+    # INDEX IF NOT EXISTS), 006_api_key_permissions.sql
+    # (ADD COLUMN IF NOT EXISTS / DROP+ADD CONSTRAINT IF EXISTS), and
+    # 007_test_artifact_type.sql (ALTER TYPE ... ADD VALUE IF NOT EXISTS).
+    # End state: schema_migrations populated, content_tsv intact, artifacts
     # rows intact, rate_limit_counters present, api_keys.permission
     # column + check constraint present.
     async with get_conn() as conn:
@@ -149,6 +150,7 @@ async def legacy_db_state():
             "004_hybrid_search.sql",
             "005_rate_limit_counters.sql",
             "006_api_key_permissions.sql",
+            "007_test_artifact_type.sql",
         ]
     ), "Teardown failed: schema_migrations was not fully restored."
 
@@ -212,6 +214,7 @@ async def test_bootstrap_adopts_only_legacy_baseline(legacy_db_state) -> None:
             "004_hybrid_search.sql",
             "005_rate_limit_counters.sql",
             "006_api_key_permissions.sql",
+            "007_test_artifact_type.sql",
         ]
     )
     assert filenames == expected_all, (

@@ -21,16 +21,18 @@ app.add_typer(import_openspec.app, name="import")
 
 @app.command()
 def init():
-    """Initialize database schema and seed global SDD skills."""
+    """Initialize database schema, seed global SDD skills and harness rules."""
     import asyncio
     from opensddrag.db.connection import run_migrations
-    from opensddrag.cli._seeds import seed_sdd_skills
+    from opensddrag.cli._seeds import seed_global_harness_rules, seed_sdd_skills
 
     async def _run():
         console.print("[bold green]Running migrations...[/bold green]")
         await run_migrations()
         console.print("[bold green]Seeding global SDD skills...[/bold green]")
         await seed_sdd_skills()
+        console.print("[bold green]Seeding global harness rules...[/bold green]")
+        await seed_global_harness_rules()
         console.print("[bold green]✓ OpenSddRag initialized successfully.[/bold green]")
 
     asyncio.run(_run())

@@ -361,3 +361,37 @@ async def get_relationships(artifact_id: UUID) -> list[dict]:
                 (str(artifact_id), str(artifact_id), str(artifact_id)),
             )
             return await cur.fetchall()
+
+
+async def count_implements_test_targets(source_id: UUID) -> int:
+    """Count how many ``type="test"`` artifacts the given source implements.
+
+    Used by ``validate_artifact`` to enforce REQ-005 (sdd-workflow-lifecycle
+    MODIFIED): a task artifact must link at least one unit-level test
+    artifact via an ``implements`` relationship, unless it carries the
+    ``metadata.test_exempt=true`` escape hatch. Both the relationship
+    direction (``source_id = :source``) and the target artifact type
+    (``artifacts.type = 'test'``) are constrained in SQL so the executor
+    does not need a second round-trip to fetch the target rows.
+
+    Returns ``0`` when the source has no such relationships. Duplicate
+    relationships (e.g. created by re-running link) are counted once
+    each — uniqueness is enforced by the
+    ``(source_id, target_id, relationship_type)`` constraint added in
+    migration ``002_fix_relationships_and_types.sql``.
+    """
+    async with get_conn() as conn:
+        async with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
+            await cur.execute(
+                """
+                SELECT COUNT(*) AS n
+                FROM artifact_relationships r
+                JOIN artifacts a ON a.id = r.target_id
+                WHERE r.source_id = %s
+                  AND r.relationship_type = 'implements'
+                  AND a.type = 'test'
+                """,
+                (str(source_id),),
+            )
+            row = await cur.fetchone()
+            return int(row["n"]) if row else 0

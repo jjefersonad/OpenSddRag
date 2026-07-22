@@ -79,7 +79,7 @@ _TOOL_DEFINITIONS: tuple[tuple[str, str, dict[str, Any]], ...] = (
             "properties": {
                 "query": {"type": "string", "description": "Natural language query"},
                 "project_slug": {"type": "string", "description": "Project slug or '*' for all projects"},
-                "type": {"type": "string", "enum": ["proposal", "spec", "task", "design"]},
+                "type": {"type": "string", "enum": ["proposal", "spec", "task", "design", "test"]},
                 "limit": {"type": "integer", "default": 5},
             },
         },
@@ -103,7 +103,7 @@ _TOOL_DEFINITIONS: tuple[tuple[str, str, dict[str, Any]], ...] = (
             "type": "object",
             "properties": {
                 "project_slug": {"type": "string"},
-                "type": {"type": "string", "enum": ["proposal", "spec", "task", "design"]},
+                "type": {"type": "string", "enum": ["proposal", "spec", "task", "design", "test"]},
                 "status": {"type": "string", "enum": ["draft", "active", "archived"]},
             },
         },
@@ -320,7 +320,7 @@ _TOOL_DEFINITIONS: tuple[tuple[str, str, dict[str, Any]], ...] = (
             "required": ["name", "type", "content"],
             "properties": {
                 "name": {"type": "string"},
-                "type": {"type": "string", "enum": ["proposal", "spec", "task", "design"]},
+                "type": {"type": "string", "enum": ["proposal", "spec", "task", "design", "test"]},
                 "content": {"type": "string"},
                 "project_slug": {"type": "string"},
                 "status": {"type": "string", "enum": ["draft", "active", "archived"], "default": "draft"},

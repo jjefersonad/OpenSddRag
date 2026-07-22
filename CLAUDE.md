@@ -135,6 +135,42 @@ Commands are installed to `.claude/commands/opsr/` and invoked as `/opsr:<name>`
 
 Available commands: `propose`, `spec`, `design`, `tasks`, `apply`, `verify`, `sync`, `archive`, `explore`, `continue`, `status`, `flow`, `search`.
 
+## Conventions
+
+### Test artifacts (`type="test"`) — TDD discipline baked into the SDD flow
+
+The `artifacts` table includes a `test` enum value (added by migration `007_test_artifact_type.sql`). Test cases are first-class artifacts — they are addressable, linkable, and semantically searchable, just like proposals, specs, designs, and tasks. There is no separate `test_scenarios` table.
+
+A `test` artifact carries:
+
+- `metadata.level` — either `"scenario"` (a spec WHEN/THEN) or `"unit"` (a method/function the apply phase will cover in isolation).
+- `metadata.test_status` — one of `"pending"`, `"failing"`, `"passing"`. Lifecycle: `pending` → `failing` (RED) → `passing` (GREEN), then stays `passing` through REFACTOR unless a regression is introduced. Scenario-level `test_status` is **derived** at verify time from its linked unit tests (`passing` if all passing, `failing` if any failing, `pending` if none linked).
+- `metadata.requirement_ref` — the `REQ-NNN` from the originating spec the test traces to.
+
+Relationships:
+
+- `spec ──implements──> test (level=scenario)` — created by the new scenario-confirmation gate in `/opsr:spec` (Step 7).
+- `task ──implements──> test (level=unit)` — created by `/opsr:tasks` at task-creation time, in the same step that creates the task itself, so the new structural validation in `validate_artifact` passes on the first call.
+- `test (level=unit) ──relates_to──> test (level=scenario)` — links a unit test to the scenario it covers.
+
+### Scenario-confirmation gate (`/opsr:spec` Step 7)
+
+After the spec phase validates every just-written spec, the agent aggregates all `#### Scenario:` blocks across the change's specs, grouped by `### Requirement: REQ-NNN`, and `STOP`s for the user to either confirm or request adjustments. Only on confirmation does the agent create one `test` artifact (`level=scenario`, `test_status=pending`) per scenario, linked to its spec via `implements`. The agent must NOT skip this gate even when scenarios look obvious.
+
+### Apply is test-first (RED → GREEN → REFACTOR) per unit
+
+`/opsr:apply` Step 5 runs the cycle per testable unit. For each unit-level `test` artifact linked to the task:
+
+1. **RED** — write a failing test for the unit (the target project's native test runner — pytest, vitest, jest, go test, etc.). Update the `test` artifact's `test_status` to `"failing"`. No production code yet.
+2. **GREEN** — write the minimal production code to make it pass. Update `test_status` to `"passing"`.
+3. **REFACTOR** — clean up while keeping the test green. `test_status` must remain `"passing"`.
+
+Step 6 additionally confirms every linked unit test is `"passing"` before Step 7 (the falsification step from `apply-verify-before-done`) runs. Step 7 itself is **unchanged** — it still addresses hidden dependencies elsewhere in the codebase, a different concern from a unit's own correctness, and runs after REFACTOR.
+
+### Exemption: `metadata.test_exempt=true`
+
+Tasks that genuinely have no testable unit (e.g. prompt templates, SQL migrations without standalone logic) carry `metadata.test_exempt=true` and prepend a `## Reason` heading to their content (e.g. `## Reason: prompt template only, no runtime behaviour`). `validate_artifact` accepts a task without a linked test artifact only when both the flag and the reason are present. The `tdd-first` harness rule (`severity=error`, `trigger=on_apply`) blocks `apply` if a non-exempt task would be written without a failing test first.
+
 ## Language Convention
 
 All project-level text **must be written in English**: source code, inline comments, SQL migration comments, documentation files (`README.md`, `docs/`, `CLAUDE.md`), CLI help strings, and planning artifacts inside `openspec/`.

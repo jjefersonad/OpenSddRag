@@ -10,6 +10,7 @@ class ArtifactType(str, Enum):
     spec = "spec"
     task = "task"
     design = "design"
+    test = "test"
 
 
 class ArtifactStatus(str, Enum):
