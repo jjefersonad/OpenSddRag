@@ -4,9 +4,10 @@ import chalk from "chalk";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { join, basename } from "path";
 
-import { checkHealth, createProject } from "../api.js";
+import { checkHealth, createProject, addRule } from "../api.js";
+import { DEFAULT_RULES } from "../harness-rules.js";
 import { DEFAULT_SERVER_URL, resolveServerUrl, resolveApiKey } from "../config.js";
-import { renderClaudeMdBlock, renderClaudeMdStandalone } from "../templates/claude-md.js";
+import { renderClaudeMdStandalone, upsertClaudeMdBlock } from "../templates/claude-md.js";
 import { getCommands } from "../templates/commands/index.js";
 import { getOpenCodeCommands } from "../templates/commands/opencode.js";
 import { getSkills, getOpenCodeSkills } from "../templates/skills/index.js";
@@ -170,6 +171,15 @@ export const initCommand = new Command("init")
       process.exit(1);
     }
 
+    // ── 2b. Seed default harness rules (idempotent upsert by name) ───────────
+    for (const rule of DEFAULT_RULES) {
+      try {
+        await addRule(serverUrl, slug, rule, apiKey);
+      } catch (err) {
+        console.error(chalk.yellow(`\n  Warning: could not seed rule '${rule.name}': ${err.message}`));
+      }
+    }
+
     // ── 3. Configure AI tools ─────────────────────────────────────────────────
     process.stdout.write(chalk.bold("  3/4 ") + "Configuring AI tools... ");
     const configured = [];
@@ -237,21 +247,21 @@ export const initCommand = new Command("init")
     const claudeMdPath = join(cwd, "CLAUDE.md");
     if (existsSync(claudeMdPath)) {
       const content = readFileSync(claudeMdPath, "utf8");
-      if (content.includes("OpenSddRag")) {
-        console.log(chalk.yellow("✓ (already has OpenSddRag section)"));
-      } else {
-        writeFileSync(claudeMdPath, content.trimEnd() + "\n" + renderClaudeMdBlock({ slug, serverUrl }) + "\n");
-        console.log(chalk.green("✓ (appended)"));
-      }
+      const { content: updated, action } = upsertClaudeMdBlock(content, { slug, serverUrl });
+      writeFileSync(claudeMdPath, updated);
+      const label = {
+        updated: "✓ (updated)",
+        migrated: "✓ (migrated to trackable block)",
+        appended: "✓ (appended)",
+      }[action];
+      console.log(chalk.green(label));
     } else {
       writeFileSync(claudeMdPath, renderClaudeMdStandalone({ projectName: name, slug, serverUrl }));
       console.log(chalk.green("✓ (created)"));
     }
 
-    // opensddrag.yaml (local project marker)
-    if (!existsSync(join(cwd, "opensddrag.yaml"))) {
-      writeFileSync(join(cwd, "opensddrag.yaml"), `project: ${slug}\nserver: ${serverUrl}\n`);
-    }
+    // opensddrag.yaml (local project marker) — always refreshed, same as CLAUDE.md above
+    writeFileSync(join(cwd, "opensddrag.yaml"), `project: ${slug}\nserver: ${serverUrl}\n`);
 
     // ── Done ──────────────────────────────────────────────────────────────────
     console.log(chalk.bold.green("\n  ✓ Project connected to OpenSddRag!\n"));

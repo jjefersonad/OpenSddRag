@@ -2,11 +2,58 @@
 Global SDD skills — semantic index for suggest_skill().
 Each entry describes WHEN to use a command so the AI can find it by natural language objective.
 Detailed step-by-step instructions live in .claude/skills/opensddrag-*/SKILL.md (created by npm client).
+
+This module also seeds global harness rules (per-project). Rules are persisted
+per-project (the `project_rules` schema requires a `project_id`); for that
+reason the seed function iterates over every existing project and upserts the
+rule idempotently. `opensddrag-server init` invokes this function so that
+fresh databases get the `tdd-first` rule for every project already registered
+— re-running `init` is a no-op thanks to the `ON CONFLICT (project_id, name)
+DO UPDATE` clause in `rule_repository.upsert`.
 """
 
-from opensddrag.db import skill_repository
+from opensddrag.db import project_repository, rule_repository, skill_repository
 from opensddrag.embedding.service import embed
+from opensddrag.models.rule import RuleCreate
 from opensddrag.models.skill import SkillCreate, SkillStep
+
+
+# Harness rule seeded into every project by `opensddrag-server init`.
+# Implements REQ-001 of the `tdd-red-green-refactor` capability from the
+# `embed-tdd-in-sdd-workflow` change: the agent MUST NOT write production code
+# for a unit before a failing test exists. The exemption path (tasks with
+# `metadata.test_exempt=true` plus a stated reason) comes from the MODIFIED
+# REQ-005 of `sdd-workflow-lifecycle` in the same change.
+#
+# `project_id` is injected per-project in `seed_global_harness_rules` because
+# the `RuleCreate` model requires it (the `project_rules` schema does not
+# support a global `project_id = NULL`).
+_TDD_FIRST_RULE_TEMPLATE: dict = {
+    "name": "tdd-first",
+    "trigger": "on_apply",
+    "category": "verification",
+    "severity": "error",
+    "instruction": (
+        "Apply is test-first (RED → GREEN → REFACTOR) per testable unit. "
+        "MUST NOT write production code for a unit before a failing unit test "
+        "exists covering the intended behavior; the unit MUST have a linked "
+        "`test` artifact (`type=\"test\"`, `level=\"unit\"`) progressing "
+        "`test_status` from `pending` → `failing` → `passing`. Stack-agnostic: "
+        "applies equally to pytest, vitest, jest, and go test. "
+        "EXCEPTION: tasks carrying `metadata.test_exempt=true` with a stated "
+        "reason in their content (e.g. prompt templates, SQL migrations with "
+        "no independently testable behavior) are not subject to this gate — "
+        "see sdd-workflow-lifecycle REQ-005 (MODIFIED). Do not write "
+        "trivially-passing tests solely to satisfy this rule."
+    ),
+    "enabled": True,
+    "metadata": {
+        "origin_change": "embed-tdd-in-sdd-workflow",
+        "capability": "tdd-red-green-refactor",
+        "applies_to_capability": "sdd-workflow-lifecycle",
+        "modified_requirement": "REQ-005",
+    },
+}
 
 _SKILLS = [
     SkillCreate(
@@ -132,3 +179,28 @@ async def seed_sdd_skills() -> None:
         embedding = embed(f"{skill_data.name} {skill_data.description}")
         await skill_repository.create_skill(skill_data, embedding)
         print(f"  ✓ Seeded skill: {skill_data.name}")
+
+
+async def seed_global_harness_rules() -> None:
+    """Seed the global harness rules into every existing project.
+
+    Rules are persisted per-project (`project_rules.project_id` is `NOT NULL`),
+    so a single rule must be upserted once per project. The seed is idempotent:
+    `rule_repository.upsert` resolves `(project_id, name)` collisions with
+    `ON CONFLICT DO UPDATE`, so re-running `opensddrag-server init` does not
+    create duplicates or change behavior for projects that already have the
+    rule installed.
+
+    On a clean database with no projects yet, this function is a no-op for
+    the rule itself — the rule will be seeded automatically the next time
+    `init` runs after projects are created, or when individual projects are
+    re-seeded by a follow-up workflow.
+    """
+    projects = await project_repository.list_projects()
+    if not projects:
+        print("  • No projects registered; skipping global harness rule seed.")
+        return
+    for project in projects:
+        data = RuleCreate(project_id=project.id, **_TDD_FIRST_RULE_TEMPLATE)
+        await rule_repository.upsert(data)
+        print(f"  ✓ Seeded harness rule 'tdd-first' for project '{project.slug}'")

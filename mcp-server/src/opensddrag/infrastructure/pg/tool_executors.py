@@ -447,7 +447,26 @@ async def validate_artifact(
     artifact = await repository.get_artifact(project_id, args["name"])
     if not artifact:
         return {"error": f"Artifact '{args['name']}' not found."}
-    issues = _validate(artifact.type.value, artifact.content)
+    # REQ-005 (sdd-workflow-lifecycle MODIFIED): task validation depends on
+    # the artifact's own `metadata.test_exempt` flag AND on whether the
+    # task is linked to at least one `test` artifact via `implements`.
+    # The domain `validate()` function stays pure (no DB), so this layer
+    # is responsible for surfacing those two pieces of state before
+    # calling it. Other artifact types only need shape checks, so the
+    # defaults keep the common path cheap.
+    task_metadata: dict | None = None
+    task_linked_test_count = 0
+    if artifact.type.value == "task":
+        task_metadata = artifact.metadata or {}
+        task_linked_test_count = await repository.count_implements_test_targets(
+            artifact.id
+        )
+    issues = _validate(
+        artifact.type.value,
+        artifact.content,
+        task_metadata=task_metadata,
+        task_linked_test_count=task_linked_test_count,
+    )
     return {"valid": not issues, "issues": issues}
 
 

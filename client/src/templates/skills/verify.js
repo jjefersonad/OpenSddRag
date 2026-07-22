@@ -38,8 +38,21 @@ Extract decisions from the design's "## Decisions" section. For each:
 - Check the implementation follows the chosen approach.
 - If it deviates → **SUGGESTION: Possible deviation from design**.
 
+### Step 5 — Verify test_status (TDD gate)
+Walk every \`test\` artifact linked (directly or transitively) to the change. The point is to derive a fresh \`test_status\` for scenario-level tests and to fail the verification on any non-exempt test that is not green.
+
+1. **Collect every \`test\` artifact linked to the change.** Start from the change's task list (use \`get_relationships(name="<change-name>-design", project_slug="${slug}")\` plus a loop over each \`task-name\`) and follow \`implements\` / \`relates_to\` links to gather all \`type="test"\` artifacts reachable from the change's tasks and specs. Also follow design \`relates_to\` scenario tests so coverage analysis is holistic.
+2. **For each scenario-level test** (\`metadata.level="scenario"\`), recompute \`test_status\` from its linked unit-level tests:
+   - \`passing\` if at least one linked unit test exists and every one of them has \`test_status="passing"\`.
+   - \`failing\` if any linked unit test has \`test_status="failing"\`.
+   - \`pending\` if the scenario has zero linked unit tests yet.
+   Then \`update_artifact(name="<scenario-test>", metadata={"test_status": "<derived>"}, project_slug="${slug}")\` so the recomputed status is persisted and visible in semantic search.
+3. **Classify each test** by its current \`test_status\`. A test is \`exempt\` only if its linked task carries \`metadata.test_exempt=true\` AND the task's content states a reason (the same gate \`validate_artifact\` applies — see sdd-workflow-lifecycle REQ-005). Otherwise it counts as a non-exempt test.
+4. **Collect blockers.** Every non-exempt test whose \`test_status\` is not exactly \`"passing"\` is a **CRITICAL: Test <name> not passing (<test_status>)** issue. Group them at the top of the report so the agent and the user see the failure first.
+5. **Scenario derivation is in-scope here.** The previous applies of \`/opsr:apply\` updated unit-level \`test_status\`, but scenario-level \`test_status\` is derived (not authored) — this step is the one place the value gets computed for the change.
+
 ${harnessChecklistBlock(slug, "on_verify", "Declaring verification complete")}
-### Step 5 — Generate the report
+### Step 6 — Generate the report
 \`\`\`
 ## Verification Report: <change-name>
 
@@ -49,9 +62,11 @@ ${harnessChecklistBlock(slug, "on_verify", "Declaring verification complete")}
 | Completeness | ✓/✗   |
 | Correctness  | ✓/✗   |
 | Coherence    | ✓/✗   |
+| Tests        | ✓/✗ (<N> blocking, <M> passing) |
 
 ### CRITICAL Issues
 - [Issue]
+- [Test <name> not passing (<status>) ...]   ← from Step 5
 
 ### WARNING Issues
 - [Issue]
@@ -63,8 +78,10 @@ ${harnessChecklistBlock(slug, "on_verify", "Declaring verification complete")}
 [READY TO ARCHIVE | ISSUES MUST BE FIXED BEFORE ARCHIVING]
 \`\`\`
 
-### Step 6 — Record the verification
-\`record_trace(action="verify", result_summary="Verification: <PASS/FAIL> — <N> critical, <N> warnings", project_slug="${slug}")\`
+The "Tests" row reflects Step 5. **Do NOT write "READY TO ARCHIVE" while any CRITICAL test issue (or any other CRITICAL issue) remains.** \`/opsr:archive\` will be blocked by the harness rule \`tdd-first\` if any non-exempt test artifact linked to the change has \`test_status\` other than \`"passing"\`, so the report's assessment MUST agree with that gate to avoid a misleading recommendation.
+
+### Step 7 — Record the verification
+\`record_trace(action="verify", result_summary="Verification: <PASS/FAIL> — <N> critical, <N> warnings, <M> test blockers", project_slug="${slug}")\`
 
 ## Output
 - A structured verification report (CRITICAL / WARNING / SUGGESTION). No artifacts are modified.
