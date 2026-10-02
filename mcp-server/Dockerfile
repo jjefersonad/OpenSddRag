@@ -4,12 +4,13 @@ WORKDIR /app
 
 RUN pip install uv --no-cache-dir
 
-COPY pyproject.toml .
+COPY pyproject.toml uv.lock ./
 COPY src/ src/
 
-RUN uv pip install --system --no-cache -e .
+RUN uv sync --frozen --no-dev
 
 ENV OPENSDDRAG_PROJECT=default
+ENV PATH="/app/.venv/bin:$PATH"
 
 EXPOSE 8000
 

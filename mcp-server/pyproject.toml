@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "SDD + Harness: Spec-Driven Development with PostgreSQL/pgvector and MCP server"
 requires-python = ">=3.11"
 dependencies = [
-    "mcp>=1.0.0",
+    "mcp>=1.0.0,<2",
     "psycopg[binary,pool]>=3.1",
     "pgvector>=0.3.5",
     "sentence-transformers>=3.0.0",
