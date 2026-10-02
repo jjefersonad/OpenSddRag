@@ -116,7 +116,7 @@ All vector columns use HNSW indexes (`vector_cosine_ops`). Embeddings are 384-di
 ### MCP transports
 
 - **stdio**: Claude Code spawns `opensddrag-server server start` as a child process. Configured via `.mcp.json` in the client project with `type: "http"` pointing to the SSE endpoint.
-- **SSE**: Starlette app (`/sse` + `/messages/`) for Docker/remote use. Also exposes a small REST API (`/health`, `GET /api/projects`, `POST /api/projects`) used by the Node.js client.
+- **SSE / HTTP**: Starlette app exposing the MCP streamable-HTTP transport at `/mcp` (auth: Bearer API key) for Docker/remote use. It also exposes the management REST API under `/api/v1/...` (auth: Bearer `MANAGEMENT_API_TOKEN`) and, when `SERVE_WEB_UI=true`, the built dashboard at `/`.
 
 ### SDD artifact lifecycle
 

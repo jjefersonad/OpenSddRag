@@ -70,7 +70,7 @@ This starts:
 Verify they are running (a `401` response is expected — auth is enabled by default):
 
 ```bash
-curl http://localhost:8000/health
+curl -i http://localhost:8000/mcp/
 ```
 
 Then create an API key and connect your project:
@@ -185,12 +185,13 @@ For remote use or via Docker:
 opensddrag-server server start --transport sse --port 8000
 ```
 
-Available endpoints in SSE mode:
-- `GET /health` — health check
-- `GET /sse` — SSE stream for the MCP client
-- `POST /messages/` — MCP message endpoint
-- `GET /api/projects` — list projects (used by the Node.js client)
-- `POST /api/projects` — create a project (used by the Node.js client)
+Available endpoints in HTTP/SSE mode:
+- `POST /mcp` — MCP streamable-HTTP transport (auth: `Authorization: Bearer <api-key>`)
+- `GET /api/v1/projects` — list projects (management API; auth: `Authorization: Bearer <MANAGEMENT_API_TOKEN>`)
+- `POST /api/v1/projects` — create a project (management API)
+- `GET /api/v1/projects/:slug/artifacts?type=...` — list artifacts (management API)
+- `GET /api/v1/search?q=...` — semantic search (management API)
+- `GET /` — built web dashboard, served only when `SERVE_WEB_UI=true`
 
 ### Tests
 
