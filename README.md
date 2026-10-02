@@ -31,15 +31,19 @@ Each artifact lives in the database with a vector embedding, enabling semantic s
 
 ### Three memory layers
 
+The core is **domain-agnostic** — SDD is the first **flow**, not the only one. Artifact kinds are free text and scoped by `flow`.
+
 | Table | Type | Description |
 |---|---|---|
-| `artifacts` | Semantic memory | Proposals, specs, designs, tasks — each with a `vector(384)` embedding |
+| `artifacts` | Semantic memory | Proposals, specs, designs, tasks, tests and any flow's kinds — each with a `vector(384)` embedding; `type` is text, `flow` scopes the workflow (`'sdd'` by default) |
 | `execution_traces` | Episodic memory | Agent action log with embeddings for recall |
 | `sessions` | Working context | Active artifact IDs + free-form JSON per project |
-| `skills` | SDD templates | Global (`project_id IS NULL`) or project-scoped |
-| `projects` | Multi-tenant registry | Projects registered in the system |
-| `artifact_relationships` | Dependency graph | Links between artifacts (`depends_on`, `implements`, `relates_to`) |
-| `project_rules` | Harness rules | Behavioral constraints enforced per SDD phase, with severity and trigger |
+| `skills` | Skill templates | Global (`project_id IS NULL`) or project-scoped; carry `flow` |
+| `projects` | Multi-tenant registry | Projects registered in the system; `default_flow` resolves an omitted `flow` |
+| `artifact_relationships` | Dependency graph | Links between artifacts (`depends_on`, `implements`, `relates_to`) — cross-flow links allowed |
+| `project_rules` | Harness rules | Behavioral constraints per phase (`trigger` is free text); carry `flow` |
+| `flows` | Flow registry | One row per workflow (`manifest` JSONB), seeded with `sdd` |
+| `artifact_kinds` | Kind registry | `(flow, kind)` pairs with declarative `rules` (`required_headings`, `required_metadata_keys`) |
 
 All vectors use HNSW indexes (`vector_cosine_ops`). Embeddings are 384 dimensions via `all-MiniLM-L6-v2`.
 
@@ -233,13 +237,15 @@ Options:
 
 ### What `init` installs in the target project
 
+`opensddrag init` installs the selected flow(s) — default `sdd`, or `--flow sdd,docs`:
+
 | File/Folder | Description |
 |---|---|
 | `.mcp.json` | Configures Claude Code to connect to the MCP server via SSE |
-| `.claude/commands/opsr/*.md` | `/opsr:*` slash commands for Claude Code |
-| `.claude/skills/opensddrag-*/SKILL.md` | OpenSddRag skills for Claude Code |
+| `.claude/commands/opsr/*.md` | `/opsr:*` slash commands for Claude Code (non-SDD flows nest under `opsr/<flow>/`) |
+| `.claude/skills/opensddrag-*/SKILL.md` | OpenSddRag skills for Claude Code (non-SDD flows prefix `opensddrag-<flow>-`) |
 | `.agents/skills/opensddrag-*/SKILL.md` | Skills for other compatible agents |
-| `CLAUDE.md` (section appended) | Instructs Claude Code about the OpenSddRag project |
+| `CLAUDE.md` (section appended) | Instructs Claude Code about the OpenSddRag project (one section per flow) |
 
 ### Check connection status
 
@@ -322,6 +328,27 @@ Installed by `client init` into `.claude/commands/opsr/`:
 | `/opsr:status` | Status | Shows current state of all active changes |
 | `/opsr:flow` | Flow | Interactive guide through the next SDD step |
 | `/opsr:search` | Search | Semantic search over artifacts and traces |
+
+---
+
+## Flows (multi-flow)
+
+OpenSddRag is not SDD-only. A **flow** is a named pack — `kinds`, harness
+triggers, skills, slash commands and a `CLAUDE.md` section — stored as data
+(no per-flow server code):
+
+- **`sdd`** is the built-in flow (bare `/opsr:*`, `opensddrag-*` skills).
+- **Register a flow**: `opensddrag-server register-flow <manifest.json>` (CLI)
+  or the `register_flow` MCP tool (used by `opensddrag init`).
+- **Install flows into a project**: `opensddrag init --flow sdd,docs` — non-SDD
+  flows get namespaced commands (`/opsr:<flow>:<command>`), prefixed skills
+  (`opensddrag-<flow>-<command>`) and their own `CLAUDE.md` section. Omitting
+  `--flow` with `--yes` installs `sdd` alone (unchanged behaviour).
+- **Validation by `(flow, kind)`**: built-in SDD validators for `spec`/`task`,
+  otherwise declarative rules from `artifact_kinds` (`required_headings` /
+  `required_metadata_keys`), otherwise a structural fallback.
+- **Resolution**: MCP tools accept an optional `flow`, resolved from the
+  project's `default_flow` and finally `'sdd'`.
 
 ---
 

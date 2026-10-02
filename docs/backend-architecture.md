@@ -157,16 +157,35 @@ Camada repository **leve** (a "arquitetura simplificada" do artigo — modelos d
 | Arquivo | Agregado |
 |---|---|
 | `connection.py` | Pool async psycopg + `run_migrations()` |
-| `db/repository.py` | Artefatos (CRUD, busca semântica pgvector, relacionamentos) |
-| `db/project_repository.py` | Projetos (registro multi-tenant) |
-| `db/rule_repository.py` | Regras de harness |
+| `db/repository.py` | Artefatos (CRUD, busca semântica pgvector, relacionamentos, filtro por `flow`) |
+| `db/project_repository.py` | Projetos (registro multi-tenant; `default_flow`) |
+| `db/rule_repository.py` | Regras de harness (`trigger` texto livre; filtro por `flow`) |
 | `db/session_repository.py` | Working context por projeto |
-| `db/skill_repository.py` | Skills globais e específicas |
+| `db/skill_repository.py` | Skills globais e específicas (carregam `flow`) |
 | `db/trace_repository.py` | Memória episódica (execuções + embeddings) |
 | `db/api_key_repository.py` | Chaves de API |
-| `db/migrations/` | SQL versionado (esquema + índices pgvector HNSW) |
+| `db/migrations/` | SQL versionado (esquema + índices pgvector HNSW); `008_multi_flow.sql` adiciona o registro de flows e tipos livres |
 
 Os repositories retornam os modelos pydantic de `models/` — nunca rows cruas. As funções são **módulo-nível, async, e não guardam estado** (o pool é compartilhado via `connection.get_conn()`), portanto seguem o padrão "funções puras" do nível serviços do frontend.
+
+### Flow registry (multi-flow)
+
+O core é **domain-agnostic**: SDD é o primeiro **flow** (`flow='sdd'`), não o único.
+Um flow é um pack de dados — `kinds`, `harness_triggers`, `skills`, `commands` e
+uma seção de `CLAUDE.md` — sem código específico no servidor:
+
+| Arquivo | Responsabilidade |
+|---|---|
+| `core/domain/flow_manifest.py` | Schema puro do manifest (`FlowManifest`, `manifest_issues`, `validate_manifest`) |
+| `core/domain/flow_registry.py` | `ensure_sdd_flow`, `register_flow` (upsert idempotente em `flows`/`artifact_kinds`) |
+| `core/domain/artifact_validation.py` | `validate_registered`: precedência `(flow, kind)` (built-in SDD → declarativo → fallback) |
+| `db/repository.get_artifact_kind_rules` | Lê `artifact_kinds.rules` do par `(flow, kind)` |
+
+`artifacts.type` é **texto livre** (não enum) e `artifacts`/`skills`/`project_rules`
+carregam `flow`; `projects.default_flow` resolve um `flow` omitido. As tools MCP
+`create_artifact`/`list_artifacts`/`search_semantic`/`get_harness_checklist` aceitam
+`flow` opcional, e `register_flow` ingere um manifest. No cliente, cada fluxo vive
+em `client/src/templates/flows/<slug>/` e é instalado via `init --flow`.
 
 ---
 
@@ -182,6 +201,8 @@ Componente isolado (wrapper de 3ª lib): `sentence-transformers` com modelo `all
 - Nova regra de autoria/validação → `core/domain/` (ex.: regra de validação de artefato/test)
 - Nova dependência externa no core → definir/estender um **Port** em `core/ports/` + adapter em `infrastructure/` + wire em `composition.py`
 - Nova tabela de agregado → modelo em `models/` + repository em `db/` + migration em `db/migrations/`
+- Novo **flow** (workflow) → pack no cliente (`client/src/templates/flows/<slug>/` com `manifest.js` + `skills/` + `commands/`) registrado via `register_flow`; **não** exige código no servidor
+- Nova regra declarativa de validação por kind → `artifact_kinds.rules` (`required_headings` / `required_metadata_keys`), sem código Python
 - Novo comando de administração → sub-typer em `cli/<domínio>.py` + wire em `cli/main.py`
 - Novo recurso exposto via MCP resources → `infrastructure/mcp_resources.py`
 

@@ -124,7 +124,7 @@ The OpenSddRag MCP server has the real data. Keep the UI and replace the mock da
 1. **Create a small REST/HTTP layer** in front of the server, or call the MCP tools directly. Suggested endpoints:
    - `GET  /projects` → list of projects
    - `POST /projects` → register a project `{name, slug, description, language}`
-   - `GET  /projects/:slug/artifacts?type=proposal|spec|design|tasks`
+   - `GET  /projects/:slug/artifacts?type=<kind>&flow=<slug>` (kinds are free text — SDD examples: `proposal|spec|design|task|test`)
    - `PATCH /projects/:slug/tasks/:id` → `{done}`
    - `GET  /projects/:slug/rules`, `PATCH /projects/:slug/rules/:id` → `{enabled}`
    - `GET  /projects/:slug/traces`

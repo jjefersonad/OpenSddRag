@@ -91,25 +91,36 @@ src/opensddrag/
   cli/server.py           — `opensddrag-server server start` (stdio or SSE)
   db/connection.py        — async psycopg connection pool + run_migrations()
   db/migrations/001_initial.sql — schema (pgvector HNSW indexes)
-  db/repository.py        — artifact CRUD + semantic search + relationships
+  db/migrations/008_multi_flow.sql — flow registry + free-text artifact types
+  db/repository.py        — artifact CRUD + semantic search + relationships (flow-aware)
   db/project_repository.py
   db/session_repository.py
   db/skill_repository.py
   db/trace_repository.py
+  core/domain/artifact_validation.py — validate_registered: (flow, kind) registry
+  core/domain/flow_manifest.py — flow manifest schema (pure domain)
+  core/domain/flow_registry.py — register/upsert flows + artifact_kinds
   embedding/service.py    — sentence-transformers embed()
+  web/                    — REST management API (/api/v1) for the dashboard
+  infrastructure/management_service.py — SqlManagementService (management API)
   models/                 — pydantic models for all DB entities
 ```
 
 ### Database schema (3 memory types)
 
+The core is **domain-agnostic**: SDD is the first **flow**, not the only one.
+
 | Table | Purpose |
 |---|---|
-| `artifacts` | **Semantic memory** — proposals, specs, designs, tasks, changes; each has a `vector(384)` embedding |
-| `artifact_relationships` | Links between artifacts (`depends_on`, `implements`, `relates_to`) |
+| `artifacts` | **Semantic memory** — proposals, specs, designs, tasks, tests and any flow's kinds; each has a `vector(384)` embedding. `type` is free text; `flow` scopes the artifact to a workflow (default `'sdd'`) |
+| `artifact_relationships` | Links between artifacts (`depends_on`, `implements`, `relates_to`) — cross-flow links allowed |
 | `execution_traces` | **Episodic memory** — agent action log with embeddings for recall |
 | `sessions` | **Working context** — active artifact IDs + free-form JSON context per project |
-| `skills` | SDD skill templates (global when `project_id IS NULL`, project-specific otherwise) |
-| `projects` | Multi-tenant project registry |
+| `skills` | Skill templates (global when `project_id IS NULL`, project-specific otherwise); carry `flow` |
+| `project_rules` | Harness rules; `trigger` is free text; carry `flow` |
+| `projects` | Multi-tenant registry; `default_flow` resolves an omitted `flow` |
+| `flows` | Flow registry — one row per workflow (`manifest` JSONB), seeded with `sdd` |
+| `artifact_kinds` | `(flow, kind)` registry with declarative `rules` (`required_headings` / `required_metadata_keys`) |
 
 All vector columns use HNSW indexes (`vector_cosine_ops`). Embeddings are 384-dimension (`all-MiniLM-L6-v2`).
 
@@ -120,7 +131,8 @@ All vector columns use HNSW indexes (`vector_cosine_ops`). Embeddings are 384-di
 
 ### SDD artifact lifecycle
 
-Every piece of work flows through artifact types in dependency order:
+SDD is the built-in `flow='sdd'`; other flows reuse the same substrate. Every
+piece of work flows through artifact types in dependency order:
 ```
 proposal → spec(s) → design → task(s) → [apply] → [verify] → [sync deltas] → archive
 ```
@@ -128,12 +140,14 @@ proposal → spec(s) → design → task(s) → [apply] → [verify] → [sync d
 - Artifact names follow a convention: `<change-name>-proposal`, `<change-name>-<capability>-spec`, `<change-name>-design`, `<change-name>-task-<group>-<N>`
 - Delta specs (for modified capabilities) carry `metadata.is_delta = true` and are merged into main specs by `/opsr:sync`
 - All artifacts live in the database — no local markdown files are created by the MCP server
+- MCP tools take an optional `flow` (resolved from `projects.default_flow`, else `'sdd'`); non-SDD flows register their manifest via `register_flow`
+- Validation is selected by `(flow, kind)`: built-in SDD (`spec`/`task`) → declarative `artifact_kinds.rules` → structural fallback
 
 ### Slash commands (installed into client projects by `opensddrag init`)
 
-Commands are installed to `.claude/commands/opsr/` and invoked as `/opsr:<name>` inside Claude Code. Each command file is a structured prompt that drives the AI through a specific SDD phase using the MCP tools. The templates live in `client/src/templates/commands/index.js`.
+Commands are installed to `.claude/commands/opsr/` and invoked as `/opsr:<name>` inside Claude Code. Each command file is a structured prompt that drives the AI through a specific SDD phase using the MCP tools. The SDD templates live in `client/src/templates/flows/sdd/`; other flows live under `client/src/templates/flows/<slug>/` and are selected with `opensddrag init --flow <slug[,slug]>` (default `sdd`). Non-SDD commands are namespaced `/opsr:<flow>:<command>` and skills are prefixed `opensddrag-<flow>-<command>`.
 
-Available commands: `propose`, `spec`, `design`, `tasks`, `apply`, `verify`, `sync`, `archive`, `explore`, `continue`, `status`, `flow`, `search`.
+Available commands (SDD): `propose`, `spec`, `design`, `tasks`, `apply`, `verify`, `sync`, `archive`, `explore`, `continue`, `status`, `flow`, `search`, `harness`.
 
 ## Conventions
 
