@@ -44,7 +44,9 @@ from typing import Any, Awaitable, Callable
 from uuid import UUID
 
 from opensddrag.config import settings
-from opensddrag.core.domain.artifact_validation import validate as _validate
+from opensddrag.core.domain.artifact_validation import (
+    validate_registered as _validate_registered,
+)
 from opensddrag.core.domain.errors import ProjectNotResolvableError
 from opensddrag.core.domain.rule_constants import (
     VALID_HARNESS_CHECKLIST_TRIGGERS,
@@ -104,6 +106,23 @@ async def _resolve_project_id(slug: str | None, caller_slug: str | None) -> UUID
 # ─── Memory: Semantic ────────────────────────────────────────────────────────
 
 
+async def _resolve_flow(args: dict, project_id: UUID | None) -> str:
+    """Resolve the effective flow for an MCP tool call — flow-registry REQ-004.
+
+    Precedence: an explicit ``args["flow"]`` wins; otherwise the target
+    project's ``default_flow``; otherwise ``'sdd'``. Callers that never pass
+    ``flow`` into an ``sdd``-default project observe the prior behaviour.
+    """
+    explicit = args.get("flow")
+    if explicit:
+        return str(explicit)
+    if project_id is not None:
+        project = await project_repository.get_project_by_id(project_id)
+        if project is not None and getattr(project, "default_flow", None):
+            return str(project.default_flow)
+    return "sdd"
+
+
 async def search_semantic(
     args: dict, *, project_id: UUID | None, caller_id: str, conn
 ) -> Any:
@@ -111,6 +130,11 @@ async def search_semantic(
     query_text = args["query"]
     embedding = embed(query_text)
     artifact_type = ArtifactType(args["type"]) if args.get("type") else None
+    # flow-registry REQ-004: resolve the omitted flow from the project's
+    # default_flow (else 'sdd'). `search_semantic` filters by flow when the
+    # project default is used, so cross-project searches (`slug="*"`) still
+    # get the resolved default flow only when a project is known.
+    flow = await _resolve_flow(args, project_id) if project_id else None
     # `query_text` is forwarded so the repository can run the hybrid lexical+vector
     # (RRF) pipeline of the `hybrid-search` capability (improve-retrieval-accuracy).
     # The MCP tool signature is unchanged; the repository falls back to the
@@ -118,7 +142,8 @@ async def search_semantic(
     # query text is empty. REQ-004 (backward-compatible search API).
     if slug == "*":
         results = await repository.search_semantic(
-            "*", embedding, args.get("limit", 5), artifact_type, query_text=query_text
+            "*", embedding, args.get("limit", 5), artifact_type,
+            query_text=query_text, flow=flow,
         )
     else:
         results = await repository.search_semantic(
@@ -127,6 +152,7 @@ async def search_semantic(
             args.get("limit", 5),
             artifact_type,
             query_text=query_text,
+            flow=flow,
         )
     return [
         {
@@ -154,8 +180,10 @@ async def list_artifacts(
 ) -> Any:
     artifact_type = ArtifactType(args["type"]) if args.get("type") else None
     artifact_status = ArtifactStatus(args["status"]) if args.get("status") else None
+    # flow-registry REQ-004: resolve omitted flow from project default_flow.
+    artifact_flow = await _resolve_flow(args, project_id)
     results = await repository.list_artifacts(
-        project_id, artifact_type, artifact_status
+        project_id, artifact_type, artifact_status, flow=artifact_flow
     )
     # `id` + `updated_at` are the content-free freshness oracle for the
     # working-context content cache (working-context-content-cache REQ-008):
@@ -397,8 +425,10 @@ async def get_harness_checklist(
             f"Error: Invalid trigger '{trigger}'. "
             f"Valid values: {', '.join(VALID_HARNESS_CHECKLIST_TRIGGERS)}"
         )
+    # flow-registry REQ-004: resolve omitted flow from project default_flow.
+    flow = await _resolve_flow(args, project_id) if project_id else None
     rules = await rule_repository.list_by_trigger(
-        project_id, trigger, enabled_only=True
+        project_id, trigger, enabled_only=True, flow=flow
     )
     return [r.model_dump() for r in rules]
 
@@ -415,7 +445,8 @@ async def create_artifact(
         name=args["name"],
         type=ArtifactType(args["type"]),
         content=args["content"],
-        status=ArtifactStatus(args.get("status", "draft")),
+        status=ArtifactStatus(args["status"]) if args.get("status") else None,
+        flow=await _resolve_flow(args, project_id),
         metadata=args.get("metadata", {}),
     )
     artifact = await repository.create_artifact(data, embedding)
@@ -450,10 +481,11 @@ async def validate_artifact(
     # REQ-005 (sdd-workflow-lifecycle MODIFIED): task validation depends on
     # the artifact's own `metadata.test_exempt` flag AND on whether the
     # task is linked to at least one `test` artifact via `implements`.
-    # The domain `validate()` function stays pure (no DB), so this layer
-    # is responsible for surfacing those two pieces of state before
-    # calling it. Other artifact types only need shape checks, so the
-    # defaults keep the common path cheap.
+    # The domain `validate_registered()` function stays pure (no DB), so
+    # this layer surfaces the DB-backed bits before calling it: the
+    # `(flow, kind)` declarative rules (flow-registry REQ-003) and, for
+    # tasks, the exemption flag + linked-test count. The name is unique by
+    # construction (the artifact was fetched by name in this project).
     task_metadata: dict | None = None
     task_linked_test_count = 0
     if artifact.type.value == "task":
@@ -461,9 +493,16 @@ async def validate_artifact(
         task_linked_test_count = await repository.count_implements_test_targets(
             artifact.id
         )
-    issues = _validate(
-        artifact.type.value,
+    rules = await repository.get_artifact_kind_rules(
+        artifact.flow, str(artifact.type)
+    )
+    issues = _validate_registered(
+        artifact.flow,
+        str(artifact.type),
         artifact.content,
+        rules=rules,
+        metadata=artifact.metadata or {},
+        name_is_unique=True,
         task_metadata=task_metadata,
         task_linked_test_count=task_linked_test_count,
     )
@@ -526,6 +565,24 @@ async def create_project(
     }
 
 
+async def register_flow(
+    args: dict, *, project_id: UUID | None, caller_id: str, conn
+) -> Any:
+    """Register a flow manifest (flow-registry REQ-002).
+
+    Thin MCP wrapper over `core.domain.flow_registry.register_flow`, which
+    validates the manifest (REQ-001), then upserts the `flows` /
+    `artifact_kinds` rows idempotently. Used by `opensddrag init` to
+    register selected non-`sdd` flows when a server is reachable.
+    """
+    from opensddrag.core.domain.flow_registry import register_flow as _register_flow
+
+    manifest = args.get("manifest")
+    if not isinstance(manifest, dict):
+        return {"error": "Parameter 'manifest' must be an object."}
+    return await _register_flow(manifest)
+
+
 # ─── OpenSpec Import ──────────────────────────────────────────────────────────
 
 
@@ -579,6 +636,7 @@ EXECUTORS: dict[str, ExecutorFn] = {
     "get_relationships": get_relationships,
     "list_projects": list_projects,
     "create_project": create_project,
+    "register_flow": register_flow,
     "openspec_import": openspec_import,
 }
 

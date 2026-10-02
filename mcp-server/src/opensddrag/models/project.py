@@ -10,6 +10,7 @@ class Project(BaseModel):
     name: str
     description: str | None
     metadata: dict
+    default_flow: str = "sdd"
     created_at: datetime
     updated_at: datetime
 
@@ -19,3 +20,4 @@ class ProjectCreate(BaseModel):
     name: str
     description: str | None = None
     metadata: dict = {}
+    default_flow: str = "sdd"

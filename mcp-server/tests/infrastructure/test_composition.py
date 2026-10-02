@@ -69,7 +69,7 @@ def test_falls_back_to_in_memory_when_no_database_url() -> None:
     assert isinstance(uc.rate_limiter, InMemoryRateLimiter)
     assert isinstance(uc.tool_registry, InMemoryToolRegistry)
     # The in-memory registry still exposes the full canonical tool set.
-    assert len(uc.tool_registry.list()) == 23
+    assert len(uc.tool_registry.list()) == 24
 
     # RATE_LIMITER=memory also forces in-memory even with a database_url.
     uc_mem = build_use_cases(

@@ -43,16 +43,11 @@ ON CONFLICT (flow, kind) DO NOTHING;
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS default_flow TEXT NOT NULL DEFAULT 'sdd';
 
 -- ─── artifacts: type enum → text, flow column (REQ-003) ─────────────────────
--- Convert the column to TEXT *before* re-applying the default. An enum
--- default (e.g. `'proposal'::artifact_type`) keeps a dependency on the type,
--- so `DROP TYPE artifact_type` fails with DependentObjectsStillExist on a
--- fresh bootstrap. `DROP DEFAULT` is a no-op when there is no default, so this
--- block stays idempotent on already-converted databases.
+-- ─── artifacts: type enum → text, flow column (REQ-003) ─────────────────────
 DO $$
 BEGIN
-    IF EXISTS (
-        SELECT 1 FROM pg_type t WHERE t.typname = 'artifact_type'
-    ) THEN
+    IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'artifact_type') THEN
+        -- Strip the type-dependent default so it cannot pin the enum down.
         ALTER TABLE artifacts ALTER COLUMN type DROP DEFAULT;
         ALTER TABLE artifacts
             ALTER COLUMN type TYPE TEXT

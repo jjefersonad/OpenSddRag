@@ -1,17 +1,20 @@
 import { Command } from "commander";
 import { input, confirm, checkbox, password } from "@inquirer/prompts";
 import chalk from "chalk";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
+import { existsSync, readFileSync, writeFileSync } from "fs";
 import { join, basename } from "path";
 
-import { checkHealth, createProject, addRule } from "../api.js";
+import { checkHealth, createProject, addRule, registerFlow } from "../api.js";
 import { DEFAULT_RULES } from "../harness-rules.js";
 import { DEFAULT_SERVER_URL, resolveServerUrl, resolveApiKey } from "../config.js";
-import { renderClaudeMdStandalone, upsertClaudeMdBlock } from "../templates/claude-md.js";
-import { getCommands } from "../templates/commands/index.js";
-import { getOpenCodeCommands } from "../templates/commands/opencode.js";
-import { getSkills, getOpenCodeSkills } from "../templates/skills/index.js";
-import { getHarnessSkill, getOpenCodeHarnessSkill } from "../templates/skill-md.js";
+import {
+  resolveSelectedFlows,
+  installFlows,
+  registerManifests,
+  toServerManifest,
+  ManifestError,
+  DEFAULT_FLOWS_ROOT,
+} from "../flows.js";
 
 // ── Config writers ─────────────────────────────────────────────────────────────
 
@@ -64,6 +67,7 @@ export const initCommand = new Command("init")
   .option("--server <url>", "OpenSddRag server URL")
   .option("--api-key <key>", "API key for authenticated servers")
   .option("--tools <list>", "Comma-separated tools to configure: claude,opencode (default: ask)")
+  .option("--flow <slugs>", "Comma-separated flows to install (default: sdd)")
   .option("--yes", "Skip confirmation prompts")
   .action(async (opts) => {
     const cwd = process.cwd();
@@ -119,6 +123,31 @@ export const initCommand = new Command("init")
       process.exit(0);
     }
 
+    // ── Which flows to install ────────────────────────────────────────────────
+    // Resolve and VALIDATE flows before any file is written: a malformed
+    // manifest aborts with a diagnostic naming the missing field and a
+    // non-zero exit (client-cli REQ-011). `--yes` defaults to sdd alone;
+    // otherwise an interactive multi-select is offered (sdd pre-selected).
+    let selectedManifests;
+    try {
+      selectedManifests = await resolveSelectedFlows({
+        flowArg: opts.flow,
+        yes: opts.yes,
+        flowsRoot: DEFAULT_FLOWS_ROOT,
+      });
+    } catch (err) {
+      if (err instanceof ManifestError) {
+        console.error(chalk.red(`\n  ✗ ${err.message}`));
+        process.exit(1);
+      }
+      throw err;
+    }
+    if (selectedManifests.length === 0) {
+      console.log(chalk.yellow("\n  No flows selected. Exiting.\n"));
+      process.exit(0);
+    }
+    const flowNames = selectedManifests.map((m) => m.flow);
+
     // ── Preview ───────────────────────────────────────────────────────────────
     console.log("\n" + chalk.dim("  Will create/update:"));
     if (selectedTools.includes("Claude Code")) {
@@ -132,7 +161,8 @@ export const initCommand = new Command("init")
       console.log(chalk.dim("    .opencode/skills/opensddrag-*/SKILL.md     — OpenCode-native skills"));
       console.log(chalk.dim("    .opencode/commands/opsr/     — slash commands (/opsr:propose, /opsr:apply...)"));
     }
-    console.log(chalk.dim("    CLAUDE.md                    — OpenSddRag section"));
+    console.log(chalk.dim(`    Flows: ${flowNames.join(", ")}`));
+    console.log(chalk.dim("    CLAUDE.md                    — OpenSddRag section(s)"));
     console.log(chalk.dim(`    Remote: register '${slug}' in central database\n`));
 
     if (!opts.yes) {
@@ -180,6 +210,18 @@ export const initCommand = new Command("init")
       }
     }
 
+    // ── 2c. Register non-sdd flow manifests with the server (best effort) ────
+    const reg = await registerManifests({
+      manifests: selectedManifests,
+      registerFn: (m) => registerFlow(serverUrl, toServerManifest(m), apiKey),
+    });
+    if (reg.registered.length) {
+      console.log(chalk.dim(`    Registered flows: ${reg.registered.join(", ")}`));
+    }
+    if (reg.skipped.length) {
+      console.log(chalk.yellow(`    Skipped flow registration: ${reg.skipped.join(", ")}`));
+    }
+
     // ── 3. Configure AI tools ─────────────────────────────────────────────────
     process.stdout.write(chalk.bold("  3/4 ") + "Configuring AI tools... ");
     const configured = [];
@@ -187,80 +229,30 @@ export const initCommand = new Command("init")
       const file = TOOL_WRITERS[tool](cwd, serverUrl, apiKey);
       configured.push(`${tool} → ${file}`);
     }
-    // Individual skill files per command — each tool gets its own generator
-    if (selectedTools.includes("Claude Code")) {
-      const ccSkills = [
-        ...getSkills(slug, serverUrl),
-        { name: "opensddrag-harness", content: getHarnessSkill({ slug, serverUrl }) },
-      ];
-      const ccRoots = [join(cwd, ".claude", "skills"), join(cwd, ".agents", "skills")];
-      for (const skill of ccSkills) {
-        for (const root of ccRoots) {
-          const skillDir = join(root, skill.name);
-          mkdirSync(skillDir, { recursive: true });
-          writeFileSync(join(skillDir, "SKILL.md"), skill.content);
-        }
-        configured.push(`skill → ${skill.name}/SKILL.md (${ccRoots.length} root(s))`);
-      }
-    }
-    if (selectedTools.includes("OpenCode")) {
-      const ocSkills = [
-        ...getOpenCodeSkills(slug, serverUrl),
-        { name: "opensddrag-harness", content: getOpenCodeHarnessSkill({ slug, serverUrl }) },
-      ];
-      const ocRoot = join(cwd, ".opencode", "skills");
-      for (const skill of ocSkills) {
-        const skillDir = join(ocRoot, skill.name);
-        mkdirSync(skillDir, { recursive: true });
-        writeFileSync(join(skillDir, "SKILL.md"), skill.content);
-        configured.push(`skill → ${skill.name}/SKILL.md (1 root(s))`);
-      }
-    }
     console.log(chalk.green("✓"));
     for (const c of configured) console.log(chalk.dim(`    ${c}`));
 
-    // ── 4. Slash commands ────────────────────────────────────────────────────
-    process.stdout.write(chalk.bold("  4/5 ") + "Writing slash commands... ");
-    let totalCommands = 0;
-    if (selectedTools.includes("Claude Code")) {
-      const commands = getCommands(slug, serverUrl);
-      for (const cmd of commands) {
-        const cmdDir = join(cwd, ".claude", "commands", cmd.folder);
-        mkdirSync(cmdDir, { recursive: true });
-        writeFileSync(join(cmdDir, `${cmd.name}.md`), cmd.content);
+    // ── 3b. Install selected flows (skills, commands, CLAUDE.md section) ──────
+    process.stdout.write(chalk.bold("  4/4 ") + "Installing flows... ");
+    const installSummary = await installFlows({
+      cwd,
+      flowsRoot: DEFAULT_FLOWS_ROOT,
+      manifests: selectedManifests,
+      slug,
+      serverUrl,
+      tools: selectedTools,
+      projectName: name,
+    });
+    console.log(chalk.green(`✓ (${installSummary.skills} skills, ${installSummary.commands} commands)`));
+    for (const act of installSummary.claudeMdActions) {
+      if (act.flow === "sdd" && act.action === "already") {
+        console.log(chalk.dim("    ✓ (already has OpenSddRag section)"));
+      } else {
+        console.log(chalk.dim(`    flow → ${act.flow} (${act.action})`));
       }
-      totalCommands += commands.length;
-    }
-    if (selectedTools.includes("OpenCode")) {
-      const opencodeCommands = getOpenCodeCommands(slug, serverUrl);
-      for (const cmd of opencodeCommands) {
-        const cmdDir = join(cwd, ".opencode", "commands", cmd.folder);
-        mkdirSync(cmdDir, { recursive: true });
-        writeFileSync(join(cmdDir, `${cmd.name}.md`), cmd.content);
-      }
-      totalCommands += opencodeCommands.length;
-    }
-    console.log(chalk.green(`✓ (${totalCommands} commands)`));
-
-    // ── 5. CLAUDE.md ──────────────────────────────────────────────────────────
-    process.stdout.write(chalk.bold("  5/5 ") + "Updating CLAUDE.md... ");
-    const claudeMdPath = join(cwd, "CLAUDE.md");
-    if (existsSync(claudeMdPath)) {
-      const content = readFileSync(claudeMdPath, "utf8");
-      const { content: updated, action } = upsertClaudeMdBlock(content, { slug, serverUrl });
-      writeFileSync(claudeMdPath, updated);
-      const label = {
-        updated: "✓ (updated)",
-        migrated: "✓ (migrated to trackable block)",
-        appended: "✓ (appended)",
-      }[action];
-      console.log(chalk.green(label));
-    } else {
-      writeFileSync(claudeMdPath, renderClaudeMdStandalone({ projectName: name, slug, serverUrl }));
-      console.log(chalk.green("✓ (created)"));
     }
 
-    // opensddrag.yaml (local project marker) — always refreshed, same as CLAUDE.md above
+    // opensddrag.yaml (local project marker) — always refreshed
     writeFileSync(join(cwd, "opensddrag.yaml"), `project: ${slug}\nserver: ${serverUrl}\n`);
 
     // ── Done ──────────────────────────────────────────────────────────────────

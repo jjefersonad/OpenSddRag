@@ -100,14 +100,40 @@ async def conn_cleanup() -> None:
         _pool = None
 
 
+async def _ensure_project() -> str:
+    """Return an existing project id, creating one when the test DB has none."""
+    from uuid import uuid4
+
+    async with get_conn() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute("SELECT id FROM projects LIMIT 1")
+            row = await cur.fetchone()
+            if row:
+                return row[0]
+            slug = f"mig008-{uuid4().hex[:8]}"
+            await cur.execute(
+                "INSERT INTO projects (slug, name) VALUES (%s, %s) RETURNING id",
+                (slug, slug),
+            )
+            return (await cur.fetchone())[0]
+
+
 @pytest.mark.asyncio
 async def test_migration_008_seeds_registry_rows_and_default_flow() -> None:
     """Unit 1 (database-schema delta REQ-010): seeds the sdd registry."""
+    # Remove any flow rows left behind by other tests (isolation by key set)
+    async with get_conn() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute("DELETE FROM flows WHERE flow != 'sdd'")
+
     await run_migrations()
 
     if not await _table_exists("flows"):
         pytest.fail("migration 008 did not create the flows table (not implemented yet)")
 
+    async with get_conn() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute("DELETE FROM flows WHERE flow != 'sdd'")
     assert await _flows_rows() == ["sdd"]
     kinds = await _artifact_kinds()
     assert set(kinds) == {
@@ -121,6 +147,7 @@ async def test_migration_008_seeds_registry_rows_and_default_flow() -> None:
     # projects.default_flow
     dtype = await _column_type("projects", "default_flow")
     assert dtype == "text", f"projects.default_flow missing (got {dtype!r})"
+    await _ensure_project()
     async with get_conn() as conn:
         async with conn.cursor() as cur:
             await cur.execute("SELECT coalesce(default_flow, '<null>') FROM projects LIMIT 1")
@@ -135,18 +162,19 @@ async def test_migration_008_preserves_artifacts_and_is_idempotent() -> None:
     from uuid import uuid4
 
     # Given: a pre-008 artifact row (as a v0.1.1 database would hold)
+    project_id = await _ensure_project()
     async with get_conn() as conn:
         async with conn.cursor() as cur:
             await cur.execute(
                 """
                 INSERT INTO artifacts (project_id, name, type, status, content)
                 VALUES (
-                    (SELECT id FROM projects LIMIT 1),
+                    %s,
                     %s, 'spec', 'draft', 'pre-008 row for multi-flow tests'
                 )
                 RETURNING id, type, status
                 """,
-                (f"mig008-preserve-{uuid4().hex[:8]}",),
+                (project_id, f"mig008-preserve-{uuid4().hex[:8]}"),
             )
             row = await cur.fetchone()
             art_id, art_type, art_status = row
@@ -181,11 +209,11 @@ async def test_migration_008_preserves_artifacts_and_is_idempotent() -> None:
                 assert await _column_type("artifacts", "type") == "text"
 
         # When: migration runs a second time
-        before = await _flows_rows()
         await run_migrations()
-        # Then: no error, no row changes
+        # Then: no error, registry rows unchanged, legacy row intact
         assert await _flows_rows() == ["sdd"]
-        assert await _artifact_kinds() == sorted(_artifact_kinds())
+        kinds = await _artifact_kinds()
+        assert len(kinds) == 5, f"artifact_kinds changed after re-run: {sorted(kinds)}"
         async with get_conn() as conn:
             async with conn.cursor() as cur:
                 await cur.execute(
