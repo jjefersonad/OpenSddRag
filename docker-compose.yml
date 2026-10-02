@@ -25,9 +25,26 @@ services:
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-all-MiniLM-L6-v2}
       OPENSDDRAG_PROJECT: ${OPENSDDRAG_PROJECT:-default}
       AUTH_ENABLED: ${AUTH_ENABLED:-true}
+      # Management REST API (/api/v1) + optional static UI serving
+      # (web-management-system docker-compose REQ-007).
+      MANAGEMENT_API_TOKEN: ${MANAGEMENT_API_TOKEN:-123456}
+      WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:3001}
+      SERVE_WEB_UI: ${SERVE_WEB_UI:-false}
     depends_on:
       db:
         condition: service_healthy
+    restart: unless-stopped
+
+  # Web dashboard — static build served by nginx (docker-compose REQ-006/008).
+  web:
+    build:
+      context: ./web
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:8000/api/v1}
+    ports:
+      - "${WEB_PORT:-3001}:80"
+    depends_on:
+      - mcp
     restart: unless-stopped
 
 volumes:

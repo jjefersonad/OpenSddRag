@@ -135,14 +135,72 @@ async def _main_stdio() -> None:
     await shutdown()
 
 
-async def _main_sse(host: str, port: int) -> None:
-    import logging
-    import uvicorn
-    from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
+def resolve_serve_web_ui(flag: bool | None) -> bool:
+    """Resolve static-UI serving: explicit flag wins, else the setting."""
+    if flag is not None:
+        return flag
+    return bool(getattr(settings, "serve_web_ui", False))
+
+
+def _default_web_dist() -> "Any":
+    from pathlib import Path
+
+    # .../mcp-server/src/opensddrag/mcp/server.py → repo root → web/dist
+    return Path(__file__).resolve().parents[4] / "web" / "dist"
+
+
+def build_http_app(
+    *,
+    mcp_app: Any,
+    serve_web_ui: bool,
+    static_dir: Any | None = None,
+    auth_enabled: bool | None = None,
+) -> Any:
+    """Assemble the SSE-mode Starlette app (mcp-server REQ-011/012/016).
+
+    Routes, in priority order:
+        1. `/mcp`  — MCP transport (wrapped in `AuthMiddleware` when enabled;
+                     the middleware is scoped to this mount so the `/api/v1`
+                     bearer gate is not double-applied).
+        2. `/api/v1/...` — management REST routes.
+        3. `/` (only when `serve_web_ui`) — static catch-all for `web/dist`.
+
+    `/api/v1` and `/mcp` therefore always take precedence over the static
+    mount. Kept separate from `_main_sse` so tests can build the app
+    without starting uvicorn or bootstrapping the DB pool.
+    """
     from starlette.applications import Starlette
     from starlette.middleware import Middleware
     from starlette.routing import Mount
+    from starlette.staticfiles import StaticFiles
+
+    from opensddrag.infrastructure.management_service import build_management_service
     from opensddrag.mcp.auth import AuthMiddleware
+    from opensddrag.web.deps import wire_cors
+    from opensddrag.web.routes import build_routes
+
+    use_auth = settings.auth_enabled if auth_enabled is None else auth_enabled
+    mcp_endpoint: Any = AuthMiddleware(mcp_app) if use_auth else mcp_app
+
+    routes: list[Any] = [
+        Mount("/mcp", app=mcp_endpoint),
+        *build_routes(build_management_service()),
+    ]
+
+    if serve_web_ui:
+        from pathlib import Path as _Path
+
+        directory = _Path(static_dir) if static_dir is not None else _default_web_dist()
+        if directory.is_dir():
+            routes.append(Mount("/", app=StaticFiles(directory=str(directory), html=True)))
+
+    return Starlette(routes=routes, middleware=wire_cors(settings))
+
+
+async def _main_sse(host: str, port: int, serve_web_ui: bool | None = None) -> None:
+    import logging
+    import uvicorn
+    from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
 
     await bootstrap(warmup_fn=get_adapter)
     session_manager = StreamableHTTPSessionManager(app=server, event_store=None, json_response=False)
@@ -151,19 +209,24 @@ async def _main_sse(host: str, port: int) -> None:
         async def __call__(self, scope, receive, send):
             await session_manager.handle_request(scope, receive, send)
 
-    if settings.auth_enabled:
-        middleware = [Middleware(AuthMiddleware)]
-    else:
+    if not settings.auth_enabled:
         logging.warning("WARNING: Auth is disabled. Do not expose this server publicly.")
-        middleware = []
-    app = Starlette(routes=[Mount("/mcp", app=_MCPApp())], middleware=middleware)
+
+    app = build_http_app(
+        mcp_app=_MCPApp(), serve_web_ui=resolve_serve_web_ui(serve_web_ui)
+    )
     async with session_manager.run():
         await uvicorn.Server(uvicorn.Config(app, host=host, port=port, log_level="info")).serve()
     await shutdown()
 
 
-def run(transport: str = "stdio", host: str = "0.0.0.0", port: int = 8000) -> None:
+def run(transport: str = "stdio", host: str = "0.0.0.0", port: int = 8000, serve_web_ui: bool | None = None) -> None:
     if transport == "sse":
-        asyncio.run(_main_sse(host, port))
+        asyncio.run(_main_sse(host, port, serve_web_ui))
     else:
         asyncio.run(_main_stdio())
+
+
+def run_web(host: str = "0.0.0.0", port: int = 8000, serve_ui: bool | None = None) -> None:
+    """Start the HTTP server with the management REST API (+ optional UI)."""
+    asyncio.run(_main_sse(host, port, serve_web_ui=serve_ui))

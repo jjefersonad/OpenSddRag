@@ -1,0 +1,29 @@
+@import "./tokens.css";
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--color-page);
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+code,
+pre,
+.slug,
+.label {
+  font-family: var(--font-mono);
+}
+
+.label {
+  font-size: var(--label-font-size);
+  letter-spacing: var(--label-letter-spacing);
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+}

@@ -2,6 +2,7 @@ import typer
 from rich.console import Console
 
 from opensddrag.cli import change, import_openspec, keys, project, search, server, session, skill, spec, task, workspace
+from opensddrag.cli.web import web as web_command
 
 app = typer.Typer(name="opensddrag", help="OpenSddRag — SDD + Harness with PostgreSQL/pgvector and MCP")
 console = Console()
@@ -17,6 +18,9 @@ app.add_typer(server.app, name="server")
 app.add_typer(workspace.app, name="workspace")
 app.add_typer(keys.app, name="key")
 app.add_typer(import_openspec.app, name="import")
+
+# Root-level command: `opensddrag-server web` (cli REQ-001/REQ-002).
+app.command(name="web")(web_command)
 
 
 @app.command()
