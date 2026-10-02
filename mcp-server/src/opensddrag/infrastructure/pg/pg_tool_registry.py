@@ -52,6 +52,7 @@ _WRITE_TOOLS: frozenset[str] = frozenset(
         "create_skill",
         "add_rule",
         "create_project",
+        "register_flow",
         "openspec_import",
         "record_trace",
         "link_artifacts",
@@ -79,7 +80,8 @@ _TOOL_DEFINITIONS: tuple[tuple[str, str, dict[str, Any]], ...] = (
             "properties": {
                 "query": {"type": "string", "description": "Natural language query"},
                 "project_slug": {"type": "string", "description": "Project slug or '*' for all projects"},
-                "type": {"type": "string", "enum": ["proposal", "spec", "task", "design", "test"]},
+                "type": {"type": "string", "description": "Artifact kind (SDD value or any kind registered by a flow)."},
+                "flow": {"type": "string", "description": "Workflow scope (defaults to the project's default_flow, otherwise 'sdd')."},
                 "limit": {"type": "integer", "default": 5},
             },
         },
@@ -103,8 +105,9 @@ _TOOL_DEFINITIONS: tuple[tuple[str, str, dict[str, Any]], ...] = (
             "type": "object",
             "properties": {
                 "project_slug": {"type": "string"},
-                "type": {"type": "string", "enum": ["proposal", "spec", "task", "design", "test"]},
+                "type": {"type": "string", "description": "Artifact kind (SDD value or any kind registered by a flow)."},
                 "status": {"type": "string", "enum": ["draft", "active", "archived"]},
+                "flow": {"type": "string", "description": "Filter by workflow scope."},
             },
         },
     ),
@@ -308,6 +311,7 @@ _TOOL_DEFINITIONS: tuple[tuple[str, str, dict[str, Any]], ...] = (
                     "description": "Phase trigger to fetch rules for.",
                 },
                 "project_slug": {"type": "string", "description": "Project slug; defaults to OPENSDDRAG_PROJECT."},
+                "flow": {"type": "string", "description": "Workflow scope (defaults to the project's default_flow, otherwise 'sdd')."},
             },
         },
     ),
@@ -320,9 +324,10 @@ _TOOL_DEFINITIONS: tuple[tuple[str, str, dict[str, Any]], ...] = (
             "required": ["name", "type", "content"],
             "properties": {
                 "name": {"type": "string"},
-                "type": {"type": "string", "enum": ["proposal", "spec", "task", "design", "test"]},
+                "type": {"type": "string", "description": "Artifact kind: the five SDD values (proposal, spec, task, design, test) or any non-empty string registered by other flows."},
                 "content": {"type": "string"},
                 "project_slug": {"type": "string"},
+                "flow": {"type": "string", "description": "Workflow this artifact belongs to (defaults to the project's default_flow, otherwise 'sdd')."},
                 "status": {"type": "string", "enum": ["draft", "active", "archived"], "default": "draft"},
                 "metadata": {"type": "object"},
             },
@@ -400,6 +405,24 @@ _TOOL_DEFINITIONS: tuple[tuple[str, str, dict[str, Any]], ...] = (
         },
     ),
     # ── OpenSpec Import ──────────────────────────────────────────────────────
+    (
+        "register_flow",
+        (
+            "Register a flow manifest (flow-registry REQ-002). Validates the manifest "
+            "(flow + non-empty kinds) and idempotently upserts the flow and its "
+            "artifact_kinds rows. Used by `opensddrag init` to register non-sdd flows."
+        ),
+        {
+            "type": "object",
+            "required": ["manifest"],
+            "properties": {
+                "manifest": {
+                    "type": "object",
+                    "description": "Flow manifest: {flow, kinds, harness_triggers, skills, commands, claude_md_section}.",
+                },
+            },
+        },
+    ),
     (
         "openspec_import",
         (

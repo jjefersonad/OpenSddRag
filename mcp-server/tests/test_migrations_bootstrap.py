@@ -151,6 +151,7 @@ async def legacy_db_state():
             "005_rate_limit_counters.sql",
             "006_api_key_permissions.sql",
             "007_test_artifact_type.sql",
+            "008_multi_flow.sql",
         ]
     ), "Teardown failed: schema_migrations was not fully restored."
 
@@ -215,6 +216,7 @@ async def test_bootstrap_adopts_only_legacy_baseline(legacy_db_state) -> None:
             "005_rate_limit_counters.sql",
             "006_api_key_permissions.sql",
             "007_test_artifact_type.sql",
+            "008_multi_flow.sql",
         ]
     )
     assert filenames == expected_all, (

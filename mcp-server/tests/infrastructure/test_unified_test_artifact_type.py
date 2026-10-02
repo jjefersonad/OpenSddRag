@@ -35,32 +35,48 @@ def _registry() -> PgToolRegistry:
 
 
 # ─── Schema: the 3 tools' input_schema accept type="test" ──────────────────
+#
+# multi-flow-foundation (database-schema delta REQ-003): artifacts.type became
+# free text — the closed `"enum"` list in the tool schemas was replaced by a
+# string description, so every kind (SDD or registered by another flow) is
+# accepted. These tests now assert the SDD `test` kind is still valid input
+# under the open contract.
 
 
 def test_search_semantic_schema_accepts_test_type() -> None:
     tool = _registry().get("search_semantic")
     assert tool is not None
-    assert "test" in tool.input_schema["properties"]["type"]["enum"]
+    type_prop = tool.input_schema["properties"]["type"]
+    assert "enum" not in type_prop, (
+        "type must be free text after multi-flow-foundation REQ-003"
+    )
+    assert type_prop["type"] == "string"
 
 
 def test_list_artifacts_schema_accepts_test_type() -> None:
     tool = _registry().get("list_artifacts")
     assert tool is not None
-    assert "test" in tool.input_schema["properties"]["type"]["enum"]
+    type_prop = tool.input_schema["properties"]["type"]
+    assert "enum" not in type_prop
+    assert type_prop["type"] == "string"
 
 
 def test_create_artifact_schema_accepts_test_type() -> None:
     tool = _registry().get("create_artifact")
     assert tool is not None
-    assert "test" in tool.input_schema["properties"]["type"]["enum"]
+    type_prop = tool.input_schema["properties"]["type"]
+    assert "enum" not in type_prop
+    assert type_prop["type"] == "string"
 
 
-# ─── Model: ArtifactType enum has a `test` member ──────────────────────────
+# ─── Model: ArtifactType still carries the SDD kinds as constants ──────────
 
 
 def test_artifact_type_enum_has_test_member() -> None:
-    assert ArtifactType("test") is ArtifactType.test
-    assert ArtifactType.test.value == "test"
+    assert str(ArtifactType("test")) == "test"
+    assert ArtifactType.test == "test"
+    # Free text stays valid: 'test' is not special-cased, just constant.
+    assert str(ArtifactType("doc-discovery")) == "doc-discovery"
 
 
 # ─── Integration: create + query a `test` artifact end-to-end (real DB) ───

@@ -29,6 +29,7 @@ class Rule(BaseModel):
     severity: str
     instruction: str
     enabled: bool
+    flow: str = "sdd"
     metadata: dict
     created_at: datetime
     updated_at: datetime
@@ -49,4 +50,5 @@ class RuleCreate(BaseModel):
     severity: str = "warning"
     instruction: str
     enabled: bool = True
+    flow: str = "sdd"
     metadata: dict = {}

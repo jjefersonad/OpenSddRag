@@ -38,15 +38,16 @@ async def create_artifact(data: ArtifactCreate, embedding: list[float]) -> Artif
         async with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
             await cur.execute(
                 """
-                INSERT INTO artifacts (project_id, name, type, status, content, metadata, embedding)
-                VALUES (%s, %s, %s, %s, %s, %s::jsonb, %s::vector)
-                RETURNING id, project_id, name, type, status, content, metadata, created_at, updated_at
+                INSERT INTO artifacts (project_id, name, type, status, flow, content, metadata, embedding)
+                VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, %s::vector)
+                RETURNING id, project_id, name, type, status, flow, content, metadata, created_at, updated_at
                 """,
                 (
                     str(data.project_id),
                     data.name,
-                    data.type.value,
-                    data.status.value,
+                    str(data.type),
+                    str(data.status) if data.status is not None else "draft",
+                    data.flow or "sdd",
                     data.content,
                     json.dumps(data.metadata),
                     str(embedding),
@@ -61,7 +62,7 @@ async def get_artifact(project_id: UUID, name: str) -> Artifact | None:
         async with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
             await cur.execute(
                 """
-                SELECT id, project_id, name, type, status, content, metadata, created_at, updated_at
+                SELECT id, project_id, name, type, status, flow, content, metadata, created_at, updated_at
                 FROM artifacts WHERE project_id = %s AND name = %s
                 """,
                 (str(project_id), name),
@@ -75,7 +76,7 @@ async def get_artifact_by_id(artifact_id: UUID) -> Artifact | None:
         async with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
             await cur.execute(
                 """
-                SELECT id, project_id, name, type, status, content, metadata, created_at, updated_at
+                SELECT id, project_id, name, type, status, flow, content, metadata, created_at, updated_at
                 FROM artifacts WHERE id = %s
                 """,
                 (str(artifact_id),),
@@ -88,21 +89,26 @@ async def list_artifacts(
     project_id: UUID,
     type: ArtifactType | None = None,
     status: ArtifactStatus | None = None,
+    flow: str | None = None,
 ) -> list[Artifact]:
     conditions = ["project_id = %s"]
     params: list = [str(project_id)]
     if type:
         conditions.append("type = %s")
-        params.append(type.value)
+        params.append(str(type))
     if status:
         conditions.append("status = %s")
-        params.append(status.value)
+        params.append(str(status))
+    if flow:
+        # Filter clause matches idx_artifacts_project (project_id, flow, type, status)
+        conditions.append("flow = %s")
+        params.append(flow)
     where = " AND ".join(conditions)
     async with get_conn() as conn:
         async with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
             await cur.execute(
                 f"""
-                SELECT id, project_id, name, type, status, content, metadata, created_at, updated_at
+                SELECT id, project_id, name, type, status, flow, content, metadata, created_at, updated_at
                 FROM artifacts WHERE {where} ORDER BY updated_at DESC
                 """,
                 params,
@@ -124,7 +130,7 @@ async def update_artifact(
         params.append(data.content)
     if data.status is not None:
         sets.append("status = %s")
-        params.append(data.status.value)
+        params.append(str(data.status))
     if data.metadata is not None:
         sets.append("metadata = jsonb_strip_nulls(metadata || %s::jsonb)")
         params.append(json.dumps(data.metadata))
@@ -138,7 +144,7 @@ async def update_artifact(
                 f"""
                 UPDATE artifacts SET {', '.join(sets)}
                 WHERE project_id = %s AND name = %s
-                RETURNING id, project_id, name, type, status, content, metadata, created_at, updated_at
+                RETURNING id, project_id, name, type, status, flow, content, metadata, created_at, updated_at
                 """,
                 params,
             )
@@ -152,6 +158,7 @@ async def search_semantic(
     limit: int = 5,
     type: ArtifactType | None = None,
     query_text: str = "",
+    flow: str | None = None,
 ) -> list[Artifact]:
     """Hybrid (lexical + vector) semantic search over `artifacts`.
 
@@ -180,7 +187,10 @@ async def search_semantic(
         filter_params.append(str(project_id))
     if type:
         base_conditions.append("type = %s")
-        filter_params.append(type.value)
+        filter_params.append(str(type))
+    if flow:
+        base_conditions.append("flow = %s")
+        filter_params.append(flow)
     base_where = " AND ".join(base_conditions)
 
     use_hybrid = settings.hybrid_search_enabled and bool(query_text and query_text.strip())
@@ -194,7 +204,7 @@ async def search_semantic(
             async with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
                 await cur.execute(
                     f"""
-                    SELECT id, project_id, name, type, status, content, metadata, created_at, updated_at
+                    SELECT id, project_id, name, type, status, flow, content, metadata, created_at, updated_at
                     FROM artifacts
                     {where}
                     ORDER BY embedding <=> %s::vector
@@ -230,7 +240,7 @@ async def search_semantic(
             async with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
                 await cur.execute(
                     f"""
-                    SELECT id, project_id, name, type, status, content, metadata, created_at, updated_at
+                    SELECT id, project_id, name, type, status, flow, content, metadata, created_at, updated_at
                     FROM artifacts
                     {where}
                     ORDER BY embedding <=> %s::vector
@@ -287,7 +297,7 @@ async def search_semantic(
                     FROM lex
                     FULL OUTER JOIN vec ON vec.id = lex.id
                 )
-                SELECT a.id, a.project_id, a.name, a.type, a.status, a.content, a.metadata,
+                SELECT a.id, a.project_id, a.name, a.type, a.status, a.flow, a.content, a.metadata,
                        a.created_at, a.updated_at
                 FROM artifacts a
                 JOIN fused ON fused.id = a.id
@@ -395,3 +405,30 @@ async def count_implements_test_targets(source_id: UUID) -> int:
             )
             row = await cur.fetchone()
             return int(row["n"]) if row else 0
+
+
+async def get_artifact_kind_rules(flow: str, kind: str) -> dict:
+    """Return the declarative rules for a ``(flow, kind)`` pair.
+
+    Reads ``artifact_kinds.rules`` populated by ``register-flow`` /
+    migration 008. Returns ``{}`` when the pair is unknown (the caller
+    then falls back to the built-in validator or structural checks —
+    flow-registry REQ-003). Used by ``validate_artifact``.
+    """
+    async with get_conn() as conn:
+        async with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
+            await cur.execute(
+                """
+                SELECT rules
+                FROM artifact_kinds
+                WHERE flow = %s AND kind = %s
+                """,
+                (flow, kind),
+            )
+            row = await cur.fetchone()
+    if not row:
+        return {}
+    rules = row["rules"]
+    if isinstance(rules, str):
+        return json.loads(rules)
+    return rules or {}

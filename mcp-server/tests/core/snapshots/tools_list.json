@@ -64,19 +64,17 @@
         },
         "type": {
           "type": "string",
-          "enum": [
-            "proposal",
-            "spec",
-            "task",
-            "design",
-            "test"
-          ]
+          "description": "Artifact kind: the five SDD values (proposal, spec, task, design, test) or any non-empty string registered by other flows."
         },
         "content": {
           "type": "string"
         },
         "project_slug": {
           "type": "string"
+        },
+        "flow": {
+          "type": "string",
+          "description": "Workflow this artifact belongs to (defaults to the project's default_flow, otherwise 'sdd')."
         },
         "status": {
           "type": "string",
@@ -187,6 +185,10 @@
         "project_slug": {
           "type": "string",
           "description": "Project slug; defaults to OPENSDDRAG_PROJECT."
+        },
+        "flow": {
+          "type": "string",
+          "description": "Workflow scope (defaults to the project's default_flow, otherwise 'sdd')."
         }
       }
     }
@@ -281,13 +283,7 @@
         },
         "type": {
           "type": "string",
-          "enum": [
-            "proposal",
-            "spec",
-            "task",
-            "design",
-            "test"
-          ]
+          "description": "Artifact kind (SDD value or any kind registered by a flow)."
         },
         "status": {
           "type": "string",
@@ -296,6 +292,10 @@
             "active",
             "archived"
           ]
+        },
+        "flow": {
+          "type": "string",
+          "description": "Filter by workflow scope."
         }
       }
     }
@@ -465,6 +465,22 @@
     }
   },
   {
+    "name": "register_flow",
+    "description": "Register a flow manifest (flow-registry REQ-002). Validates the manifest (flow + non-empty kinds) and idempotently upserts the flow and its artifact_kinds rows. Used by `opensddrag init` to register non-sdd flows.",
+    "inputSchema": {
+      "type": "object",
+      "required": [
+        "manifest"
+      ],
+      "properties": {
+        "manifest": {
+          "type": "object",
+          "description": "Flow manifest: {flow, kinds, harness_triggers, skills, commands, claude_md_section}."
+        }
+      }
+    }
+  },
+  {
     "name": "search_semantic",
     "description": "Semantic search over SDD artifacts (specs, tasks, designs) using pgvector. Pass project_slug='*' to search across all projects.",
     "inputSchema": {
@@ -483,13 +499,11 @@
         },
         "type": {
           "type": "string",
-          "enum": [
-            "proposal",
-            "spec",
-            "task",
-            "design",
-            "test"
-          ]
+          "description": "Artifact kind (SDD value or any kind registered by a flow)."
+        },
+        "flow": {
+          "type": "string",
+          "description": "Workflow scope (defaults to the project's default_flow, otherwise 'sdd')."
         },
         "limit": {
           "type": "integer",
