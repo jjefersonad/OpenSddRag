@@ -23,9 +23,12 @@ from opensddrag.web.service import ManagementServiceProtocol
 def artifact_routes(service: ManagementServiceProtocol) -> list[Route]:
     async def list_artifacts(request: Request) -> JSONResponse:
         type_filter = request.query_params.get("type")
+        flow_filter = request.query_params.get("flow")
         try:
             return JSONResponse(
-                await service.list_artifacts(request.path_params["slug"], type_filter)
+                await service.list_artifacts(
+                    request.path_params["slug"], type_filter, flow_filter
+                )
             )
         except Exception as exc:  # noqa: BLE001
             return response_for_error(exc)

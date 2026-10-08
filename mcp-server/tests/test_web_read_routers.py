@@ -58,7 +58,7 @@ class StubService:
     async def list_projects(self):
         return list(self.projects)
 
-    async def create_project(self, name, slug, description=""):
+    async def create_project(self, name, slug, description="", language=""):
         if slug == self.conflict_slug:
             raise ResourceConflictError(f"project slug {slug!r} already exists")
         created = {
@@ -77,12 +77,14 @@ class StubService:
                 return {**p, "summary": self.summary_by_slug.get(slug, {})}
         raise ResourceNotFoundError(f"project {slug!r} not found")
 
-    async def list_artifacts(self, slug, type_filter=None):
+    async def list_artifacts(self, slug, type_filter=None, flow_filter=None):
         if slug not in self.artifacts_by_slug:
             raise ResourceNotFoundError(f"project {slug!r} not found")
         items = list(self.artifacts_by_slug[slug])
         if type_filter:
             items = [a for a in items if a["type"] == type_filter]
+        if flow_filter:
+            items = [a for a in items if a.get("flow") == flow_filter]
         return items
 
     async def get_artifact(self, artifact_id):
@@ -263,3 +265,159 @@ def test_search_ranked_results_and_missing_q() -> None:
     missing = client.get("/api/v1/search", headers=_auth())
     assert missing.status_code == 422
     assert missing.json()["error"]["code"] == "VALIDATION_ERROR"
+
+# ── Flow registry endpoint (web-ui-design-alignment, web-api delta REQ-008) ──
+
+
+class FlowsStubService(StubService):
+    def __init__(self, *, flows=None, **kwargs):
+        super().__init__(**kwargs)
+        self.flows = flows if flows is not None else []
+
+    async def list_flows(self):
+        return list(self.flows)
+
+
+def test_flows_endpoint_lists_registered_flows_with_lifecycle() -> None:
+    svc = FlowsStubService(
+        flows=[
+            {
+                "flow": "sdd",
+                "kinds": [{"kind": "proposal", "rules": {}}],
+                "lifecycle": [{"name": "Propose", "kinds": ["proposal"]}],
+                "harness_triggers": ["on_spec"],
+                "registered_at": "2026-01-01T00:00:00Z",
+            },
+            {
+                "flow": "bare",
+                "kinds": [{"kind": "note", "rules": {}}],
+                "lifecycle": None,
+                "harness_triggers": [],
+                "registered_at": "2026-01-01T00:00:00Z",
+            },
+        ]
+    )
+    client = _client(svc)
+
+    resp = client.get("/api/v1/flows", headers=_auth())
+    assert resp.status_code == 200
+    body = resp.json()
+    assert [f["flow"] for f in body] == ["sdd", "bare"]
+    assert body[0]["lifecycle"] == [{"name": "Propose", "kinds": ["proposal"]}]
+    # Flow without lifecycle exposes null (REQ-008 Scenario 3)
+    assert body[1]["lifecycle"] is None
+
+
+def test_flows_endpoint_requires_token() -> None:
+    svc = FlowsStubService(flows=[])
+    client = _client(svc)
+    resp = client.get("/api/v1/flows")
+    assert resp.status_code == 401
+    assert "UNAUTHORIZED" in resp.text
+
+
+# ── Artifact flow field + filter (web-api delta REQ-009) ─────────────────────
+
+
+def test_artifacts_flow_filter_and_field() -> None:
+    svc = StubService(
+        artifacts_by_slug={
+            "demo": [
+                {"id": "1", "name": "p", "type": "proposal", "status": "draft", "flow": "sdd", "metadata": {}, "created_at": None, "updated_at": None},
+                {"id": "2", "name": "d", "type": "doc", "status": "draft", "flow": "docs", "metadata": {}, "created_at": None, "updated_at": None},
+            ]
+        }
+    )
+    client = _client(svc)
+
+    # list_artifacts signature gains flow_filter — stub falls back.
+    async def list_artifacts_flow(slug, type_filter=None, flow_filter=None):
+        items = list(svc.artifacts_by_slug[slug])
+        if flow_filter:
+            items = [a for a in items if a["flow"] == flow_filter]
+        return items
+
+    svc.list_artifacts = list_artifacts_flow  # type: ignore[method-assign]
+
+    both = client.get("/api/v1/projects/demo/artifacts", headers=_auth())
+    assert both.status_code == 200
+    assert len(both.json()) == 2
+    assert {a["flow"] for a in both.json()} == {"sdd", "docs"}
+
+    scoped = client.get("/api/v1/projects/demo/artifacts?flow=sdd", headers=_auth())
+    assert scoped.status_code == 200
+    assert [a["flow"] for a in scoped.json()] == ["sdd"]
+
+
+# ── Working context endpoint (project delta REQ-003 via D4) ──────────────────
+
+
+class SessionStubService(FlowsStubService):
+    def __init__(self, *, session=None, **kwargs):
+        super().__init__(**kwargs)
+        self.session = session
+
+    async def get_session(self, slug):
+        if slug not in self.artifacts_by_slug:
+            raise ResourceNotFoundError(f"project {slug!r} not found")
+        return self.session
+
+
+def test_session_endpoint_returns_working_context() -> None:
+    svc = SessionStubService(
+        session={
+            "active_artifacts": [{"id": "a1", "name": "p", "type": "proposal"}],
+            "note": "working on proposal",
+        },
+        artifacts_by_slug={"demo": []},
+    )
+    client = _client(svc)
+    resp = client.get("/api/v1/projects/demo/session", headers=_auth())
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["active_artifacts"] == [{"id": "a1", "name": "p", "type": "proposal"}]
+    assert body["note"] == "working on proposal"
+
+    missing = client.get("/api/v1/projects/none/session", headers=_auth())
+    assert missing.status_code == 404
+    assert missing.json()["error"]["code"] == "NOT_FOUND"
+
+
+# ── Tree endpoint route (web-artifact-hierarchy REQ-010) ────────────────────
+
+
+class TreeStubService(FlowsStubService):
+    async def get_tree(self, slug):
+        if slug != "demo":
+            raise ResourceNotFoundError(f"project {slug!r} not found")
+        return {
+            "change": "add-x",
+            "flows": [
+                {
+                    "flow": "sdd",
+                    "nodes": [
+                        {"id": "n1", "name": "add-x-proposal", "type": "proposal", "status": "active", "depth": 0, "flow": "sdd"},
+                        {"id": "n2", "name": "alpha-spec", "type": "spec", "status": "draft", "depth": 1, "flow": "sdd"},
+                    ],
+                    "edges": [{"source": "n2", "target": "n1", "relationship_type": "implements"}],
+                }
+            ],
+        }
+
+
+def test_tree_endpoint_route() -> None:
+    svc = TreeStubService()
+    client = _client(svc)
+
+    ok = client.get("/api/v1/projects/demo/tree", headers=_auth())
+    assert ok.status_code == 200
+    body = ok.json()
+    assert body["change"] == "add-x"
+    assert body["flows"][0]["nodes"][0]["depth"] == 0
+    assert body["flows"][0]["edges"][0]["relationship_type"] == "implements"
+
+    missing = client.get("/api/v1/projects/none/tree", headers=_auth())
+    assert missing.status_code == 404
+
+    unauth = client.get("/api/v1/projects/demo/tree")
+    assert unauth.status_code == 401

@@ -58,6 +58,7 @@ class ProjectCreate(BaseModel):
     name: str
     slug: str
     description: str = ""
+    language: str = ""
 
     @field_validator("slug")
     @classmethod

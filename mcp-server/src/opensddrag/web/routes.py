@@ -10,6 +10,7 @@ from __future__ import annotations
 from starlette.routing import Route
 
 from opensddrag.web.api.artifacts import artifact_routes
+from opensddrag.web.api.flows import flows_routes
 from opensddrag.web.api.projects import project_routes
 from opensddrag.web.api.rules import rule_routes
 from opensddrag.web.api.search import search_routes
@@ -23,6 +24,7 @@ def build_routes(service: ManagementServiceProtocol) -> list[Route]:
     return [
         *project_routes(service),
         *artifact_routes(service),
+        *flows_routes(service),
         *rule_routes(service),
         *task_routes(service),
         *trace_routes(service),

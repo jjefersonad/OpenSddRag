@@ -16,11 +16,11 @@ async def create_project(data: ProjectCreate) -> Project:
         async with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
             await cur.execute(
                 """
-                INSERT INTO projects (slug, name, description, metadata)
-                VALUES (%s, %s, %s, %s::jsonb)
+                INSERT INTO projects (slug, name, description, metadata, language)
+                VALUES (%s, %s, %s, %s::jsonb, %s)
                 RETURNING *
                 """,
-                (data.slug, data.name, data.description, json.dumps(data.metadata)),
+                (data.slug, data.name, data.description, json.dumps(data.metadata), data.language),
             )
             row = await cur.fetchone()
             return _row_to_project(row)

@@ -34,7 +34,7 @@ def project_routes(service: ManagementServiceProtocol) -> list[Route]:
                 422, "VALIDATION_ERROR", "invalid project payload", validation_details(exc)
             )
         try:
-            created = await service.create_project(dto.name, dto.slug, dto.description)
+            created = await service.create_project(dto.name, dto.slug, dto.description, dto.language)
         except Exception as exc:  # noqa: BLE001
             return response_for_error(exc)
         return JSONResponse(created, status_code=201)
@@ -45,10 +45,43 @@ def project_routes(service: ManagementServiceProtocol) -> list[Route]:
         except Exception as exc:  # noqa: BLE001
             return response_for_error(exc)
 
+    async def get_session(request: Request) -> JSONResponse:
+        try:
+            return JSONResponse(await service.get_session(request.path_params["slug"]))
+        except Exception as exc:  # noqa: BLE001
+            return response_for_error(exc)
+
+    async def get_tree(request: Request) -> JSONResponse:
+        try:
+            return JSONResponse(await service.get_tree(request.path_params["slug"]))
+        except Exception as exc:  # noqa: BLE001
+            return response_for_error(exc)
+
+    async def list_changes(request: Request) -> JSONResponse:
+        try:
+            return JSONResponse(await service.list_changes(request.path_params["slug"]))
+        except Exception as exc:  # noqa: BLE001
+            return response_for_error(exc)
+
     return [
         Route("/api/v1/projects", require_management_token(list_projects), methods=["GET"]),
         Route("/api/v1/projects", require_management_token(create_project), methods=["POST"]),
         Route("/api/v1/projects/{slug}", require_management_token(get_project), methods=["GET"]),
+        Route(
+            "/api/v1/projects/{slug}/session",
+            require_management_token(get_session),
+            methods=["GET"],
+        ),
+        Route(
+            "/api/v1/projects/{slug}/tree",
+            require_management_token(get_tree),
+            methods=["GET"],
+        ),
+        Route(
+            "/api/v1/projects/{slug}/changes",
+            require_management_token(list_changes),
+            methods=["GET"],
+        ),
     ]
 
 

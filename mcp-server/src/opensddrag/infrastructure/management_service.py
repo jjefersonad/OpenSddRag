@@ -12,6 +12,7 @@ routers can hand them straight to `JSONResponse`.
 
 from __future__ import annotations
 
+import json
 from typing import Any
 from uuid import UUID
 
@@ -26,7 +27,8 @@ from opensddrag.core.domain.rule_constants import (
     VALID_RULE_SEVERITIES,
     VALID_RULE_TRIGGERS,
 )
-from opensddrag.db import project_repository, repository, rule_repository, trace_repository
+from opensddrag.db import project_repository, repository, rule_repository, session_repository, trace_repository
+from opensddrag.db.flow_registry import registered_kinds
 from opensddrag.embedding.service import embed
 from opensddrag.models.artifact import Artifact, ArtifactCreate, ArtifactStatus, ArtifactType, ArtifactUpdate
 from opensddrag.models.project import Project, ProjectCreate
@@ -46,6 +48,7 @@ def _project_out(project: Project) -> dict[str, Any]:
         "name": project.name,
         "slug": project.slug,
         "description": project.description,
+        "language": project.language,
         "created_at": _iso(project.created_at),
         "updated_at": _iso(project.updated_at),
     }
@@ -57,6 +60,7 @@ def _artifact_summary(artifact: Artifact) -> dict[str, Any]:
         "name": artifact.name,
         "type": artifact.type.value,
         "status": artifact.status.value,
+        "flow": artifact.flow,
         "metadata": artifact.metadata,
         "created_at": _iso(artifact.created_at),
         "updated_at": _iso(artifact.updated_at),
@@ -99,6 +103,181 @@ def _snippet(content: str) -> str:
     return collapsed[:_SNIPPET_LEN]
 
 
+# ── Multi-flow helpers (web-ui-design-alignment D3/D6/D8) ────────────────────
+
+
+# ── Change-tree helpers (web-artifact-hierarchy, web-api delta REQ-010) ──────
+
+_DEPTH_BY_TYPE = {"proposal": 0, "spec": 1, "design": 1, "task": 2, "test": 3}
+
+
+async def _change_tree(project_id: UUID) -> dict[str, Any]:
+    """Build the active change's artifact tree (nodes + edges per flow).
+
+    Active change = most recent non-archived `metadata.change_name` in the
+    project. Depth is canonical per type (proposal 0, spec/design 1, task 2,
+    test 3); edges come from `artifact_relationships` between the change's
+    artifacts. Unlinked artifacts stay in the tree at their canonical depth
+    (design D3 fallback).
+    """
+    import psycopg.rows
+    from opensddrag.db.connection import get_conn as _gc
+
+    artifacts = await repository.list_artifacts(project_id)
+    live = [a for a in artifacts if a.status.value in ("draft", "active")]
+    if not live:
+        return {"change": None, "flows": []}
+
+    # most recent non-archived change name
+    active_change = next(
+        (a.metadata.get("change_name") for a in live if a.metadata.get("change_name")),
+        None,
+    )
+    # fall back to any non-archived change-named artifact's change_name with
+    # the most recent created_at — list_artifacts orders by created_at desc,
+    # so the first hit wins.
+    if active_change is None:
+        return {"change": None, "flows": []}
+
+    members = [a for a in live if a.metadata.get("change_name") == active_change]
+    ids = [a.id for a in members]
+    id_set = set(str(i) for i in ids)
+    by_id = {str(a.id): a for a in members}
+
+    edges: list[dict[str, Any]] = []
+    async with _gc() as conn:
+        async with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
+            await cur.execute(
+                """
+                SELECT source_id, target_id, relationship_type
+                FROM artifact_relationships
+                WHERE source_id = ANY(%s::uuid[]) AND target_id = ANY(%s::uuid[])
+                """,
+                ([str(i) for i in ids], [str(i) for i in ids]),
+            )
+            for row in await cur.fetchall():
+                edges.append(
+                    {
+                        "source": by_id[str(row["source_id"])]["flow"] if False else str(row["source_id"]),
+                        "target": str(row["target_id"]),
+                        "relationship_type": row["relationship_type"],
+                    }
+                )
+
+    def _node(a: Artifact) -> dict[str, Any]:
+        return {
+            "id": str(a.id),
+            "name": a.name,
+            "type": a.type.value,
+            "status": a.status.value,
+            "depth": _DEPTH_BY_TYPE.get(a.type.value, 2),
+            "flow": a.flow,
+        }
+
+    out_flows: dict[str, list[dict[str, Any]]] = {}
+    for artifact in members:
+        out_flows.setdefault(artifact.flow, []).append(_node(artifact))
+    for flow in out_flows:
+        out_flows[flow].sort(key=lambda n: (n["depth"], n["name"]))
+
+    return {
+        "change": active_change,
+        "flows": [
+            {"flow": flow, "nodes": nodes, "edges": edges}
+            for flow, nodes in sorted(out_flows.items())
+        ],
+    }
+
+
+async def _flow_registry_rows() -> list[tuple[str, str | None, Any]]:
+    """(flow, manifest JSONB text, registered_at) for every registered flow."""
+    from opensddrag.db.connection import get_conn
+    import psycopg.rows
+
+    async with get_conn() as conn:
+        async with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
+            await cur.execute("SELECT flow, manifest::text, registered_at FROM flows ORDER BY flow")
+            return [(r["flow"], r["manifest"], r["registered_at"]) for r in await cur.fetchall()]
+
+
+def _derived_phase(
+    lifecycle: list[dict[str, Any]] | None,
+    artifacts: list[Artifact],
+) -> str | None:
+    """Derive the current phase of a flow (project delta REQ-005, design D6).
+
+    The active phase is the first declared whose kinds still have a
+    non-archived artifact; when every artifact is archived (or none exist
+    but the flow is complete) the phase is the last declared one. A flow
+    without a declared lifecycle derives `None` — the UI omits its strip.
+    """
+    if not lifecycle:
+        return None
+    kind_to_phase: dict[str, str] = {}
+    for phase in lifecycle:
+        for kind in phase.get("kinds", []):
+            kind_to_phase.setdefault(kind, phase["name"])
+    phase_names = [p["name"] for p in lifecycle]
+
+    flow_artifacts = [a for a in artifacts if a.type.value in kind_to_phase]
+    if not flow_artifacts:
+        return phase_names[0]
+    if all(a.status.value == "archived" for a in flow_artifacts):
+        return phase_names[-1]
+    for phase in lifecycle:
+        kinds_in_phase = set(phase.get("kinds", []))
+        has_open = any(
+            a.type.value in kinds_in_phase and a.status.value != "archived"
+            for a in flow_artifacts
+        )
+        if has_open:
+            return phase["name"]
+    return phase_names[-1]
+
+
+def _aggregate_task_progress(per_flow: list[dict[str, Any]]) -> dict[str, int]:
+    """Sum task_progress over flows (design D8 — dashboard card aggregate)."""
+    done = sum(f["task_progress"]["done"] for f in per_flow)
+    total = sum(f["task_progress"]["total"] for f in per_flow)
+    return {"done": done, "total": total}
+
+
+async def _per_flow_summaries(project_id: UUID) -> list[dict[str, Any]]:
+    """Per-flow {flow, phase, task_progress} for the enriched project detail.
+
+    Groups the project's artifacts by `flow`, derives each flow's phase
+    from its declared lifecycle (REQ-005) and counts task done/total from
+    artifact metadata.
+    """
+    artifacts = await repository.list_artifacts(project_id)
+    by_flow: dict[str, list[Artifact]] = {}
+    for artifact in artifacts:
+        by_flow.setdefault(artifact.flow, []).append(artifact)
+
+    summaries: list[dict[str, Any]] = []
+    for flow, manifest_json, _registered_at in await _flow_registry_rows():
+        flow_artifacts = by_flow.get(flow)
+        if not flow_artifacts:
+            continue
+        lifecycle: list[dict[str, Any]] | None = None
+        if manifest_json:
+            try:
+                stored = json.loads(manifest_json)
+                lifecycle = stored.get("lifecycle") or None
+            except (TypeError, ValueError):
+                lifecycle = None
+        tasks = [a for a in flow_artifacts if a.type.value == "task"]
+        done = sum(1 for t in tasks if t.metadata.get("done"))
+        summaries.append(
+            {
+                "flow": flow,
+                "phase": _derived_phase(lifecycle, flow_artifacts),
+                "task_progress": {"done": done, "total": len(tasks)},
+            }
+        )
+    return summaries
+
+
 VALID_RELATIONSHIP_TYPES = ("implements", "depends_on", "relates_to")
 
 
@@ -110,12 +289,14 @@ class SqlManagementService:
         return [_project_out(p) for p in projects]
 
     async def create_project(
-        self, name: str, slug: str, description: str = ""
+        self, name: str, slug: str, description: str = "", language: str = ""
     ) -> dict[str, Any]:
         if await project_repository.get_project_by_slug(slug) is not None:
             raise ResourceConflictError(f"project slug {slug!r} already exists")
         project = await project_repository.create_project(
-            ProjectCreate(slug=slug, name=name, description=description or None)
+            ProjectCreate(
+                slug=slug, name=name, description=description or None, language=language
+            )
         )
         return _project_out(project)
 
@@ -128,10 +309,177 @@ class SqlManagementService:
         for artifact in artifacts:
             key = artifact.type.value
             summary[key] = summary.get(key, 0) + 1
-        return {**_project_out(project), "summary": summary}
+        per_flow = await _per_flow_summaries(project.id)
+        return {
+            **_project_out(project),
+            "summary": summary,
+            "flows": per_flow,
+            "task_progress": _aggregate_task_progress(per_flow),
+        }
+
+    async def list_flows(self) -> list[dict[str, Any]]:
+        """Registered flows with kinds + lifecycle (web-api delta REQ-008).
+
+        Shape per flow: {flow, kinds: [{kind, rules}], lifecycle | null,
+        harness_triggers, registered_at}. Lifecycle/manifest data comes from
+        the stored `flows.manifest` JSONB; bare manifests (migration 008
+        seed) expose `lifecycle: null`.
+        """
+        out: list[dict[str, Any]] = []
+        for flow, manifest_json, registered_at in await _flow_registry_rows():
+            kinds = await registered_kinds(flow)
+            manifest: dict[str, Any] = {}
+            if manifest_json:
+                try:
+                    manifest = json.loads(manifest_json)
+                except (TypeError, ValueError):
+                    manifest = {}
+            out.append(
+                {
+                    "flow": flow,
+                    "kinds": kinds,
+                    "lifecycle": manifest.get("lifecycle"),
+                    "harness_triggers": manifest.get("harness_triggers", []),
+                    "registered_at": _iso(registered_at),
+                }
+            )
+        return out
+
+    async def get_session(self, slug: str) -> dict[str, Any]:
+        """Working context summary (project delta, design D4)."""
+        project = await self._project_or_404(slug)
+        session = await session_repository.get_or_create(project.id)
+        active: list[dict[str, Any]] = []
+        for aid in session.active_artifact_ids:
+            artifact = await repository.get_artifact_by_id(aid)
+            if artifact is not None:
+                active.append(
+                    {"id": str(artifact.id), "name": artifact.name, "type": artifact.type.value}
+                )
+        return {
+            "active_artifacts": active,
+            "note": session.context.get("note") if isinstance(session.context, dict) else None,
+        }
+
+    async def get_tree(self, slug: str) -> dict[str, Any]:
+        """Active-change artifact tree (web-artifact-hierarchy REQ-010)."""
+        project = await self._project_or_404(slug)
+        return await _change_tree(project.id)
+
+    # SDD phase descriptions from the prototype (PHASES const).
+    _PHASE_DESCS = {
+        "Propose": "Define what & why — problem, changes, affected capabilities.",
+        "Spec": "Testable requirements with WHEN/THEN scenarios.",
+        "Design": "Technical decisions, trade-offs, risks.",
+        "Tasks": "Break the design into trackable tasks.",
+        "Apply": "Implement tasks, marking [ ] → [x].",
+        "Verify": "Validate spec scenarios against the code.",
+        "Sync": "Merge delta specs back into the base.",
+        "Archive": "Close the change, record in history.",
+    }
+
+    async def list_changes(self, slug: str) -> list[dict[str, Any]]:
+        """Changes in progress with per-change pipelines (REQ-011)."""
+        from opensddrag.db.connection import get_conn as _gc
+        import psycopg.rows
+
+        project = await self._project_or_404(slug)
+        artifacts = await repository.list_artifacts(project.id)
+        # Changes-in-progress include their archived (done) artifacts — the
+        # phase derivation needs the full chain to mark early phases `done`.
+        # A change is "live" when it has at least one non-archived artifact.
+        live_changes: dict[str, list[Artifact]] = {}
+        for a in artifacts:
+            chg = a.metadata.get("change_name")
+            if chg:
+                live_changes.setdefault(chg, []).append(a)
+        changes = {
+            chg: arts
+            for chg, arts in live_changes.items()
+            if any(a.status.value in ("draft", "active") for a in arts)
+        }
+
+        # one lifecycle lookup per flow needed (lazily)
+        lifecycle_cache: dict[str, list[dict[str, Any]] | None] = {}
+
+        async def _lifecycle(flow: str) -> list[dict[str, Any]] | None:
+            if flow in lifecycle_cache:
+                return lifecycle_cache[flow]
+            for f, manifest_json, _r in await _flow_registry_rows():
+                if f == flow:
+                    manifest: dict[str, Any] = {}
+                    if manifest_json:
+                        try:
+                            manifest = json.loads(manifest_json)
+                        except (TypeError, ValueError):
+                            manifest = {}
+                    lifecycle_cache[flow] = manifest.get("lifecycle") or None
+                    return lifecycle_cache[flow]
+            lifecycle_cache[flow] = None
+            return None
+
+        out: list[dict[str, Any]] = []
+        for chg_name, chg_artifacts in changes.items():
+            flow = chg_artifacts[0].flow
+            lifecycle = await _lifecycle(flow)
+
+            phase_status: dict[str, str] = {}
+            phases_out: list[dict[str, Any]] = []
+            if lifecycle:
+                for i, phase in enumerate(lifecycle):
+                    kinds = set(phase.get("kinds", []))
+                    phase_artifacts = [a for a in chg_artifacts if a.type.value in kinds] if kinds else []
+                    if kinds and phase_artifacts and all(a.status.value == "archived" for a in phase_artifacts):
+                        status = "done"
+                    elif kinds and any(a.status.value != "archived" for a in phase_artifacts):
+                        # active only if no earlier phase is still active
+                        earlier = lifecycle[:i]
+                        earlier_open = any(
+                            any(
+                                a.type.value in set(p.get("kinds", [])) and a.status.value != "archived"
+                                for a in chg_artifacts
+                            )
+                            for p in earlier
+                        )
+                        status = "active" if not earlier_open else "pending"
+                        # if an earlier phase is open, this one is pending;
+                        # but if this phase has artifacts and earlier ones are done → active
+                        if earlier_open:
+                            earlier_had_artifacts = any(
+                                any(a.type.value in set(p.get("kinds", [])) for a in chg_artifacts)
+                                for p in earlier
+                            )
+                            status = "pending" if earlier_had_artifacts else "active"
+                    else:
+                        status = "pending"
+                    phases_out.append(
+                        {
+                            "name": phase["name"],
+                            "status": status,
+                            "desc": self._PHASE_DESCS.get(phase["name"], "Complete this phase's output."),
+                        }
+                    )
+                    phase_status[phase["name"]] = status
+
+            tasks = [a for a in chg_artifacts if a.type.value == "task"]
+            done = sum(1 for t in tasks if t.metadata.get("done"))
+            updated = max((a.updated_at for a in chg_artifacts if a.updated_at), default=None)
+
+            out.append(
+                {
+                    "change": chg_name,
+                    "flow": flow,
+                    "updated_at": _iso(updated),
+                    "task_progress": {"done": done, "total": len(tasks)},
+                    "phases": phases_out,
+                }
+            )
+
+        out.sort(key=lambda c: c["updated_at"] or "", reverse=True)
+        return out
 
     async def list_artifacts(
-        self, slug: str, type_filter: str | None = None
+        self, slug: str, type_filter: str | None = None, flow_filter: str | None = None
     ) -> list[dict[str, Any]]:
         project = await project_repository.get_project_by_slug(slug)
         if project is None:
@@ -145,7 +493,9 @@ class SqlManagementService:
                 raise ManagementValidationError(
                     f"unknown artifact type {type_filter!r}", details=[valid]
                 ) from exc
-        artifacts = await repository.list_artifacts(project.id, type=artifact_type)
+        artifacts = await repository.list_artifacts(
+            project.id, type=artifact_type, flow=flow_filter
+        )
         return [_artifact_summary(a) for a in artifacts]
 
     async def get_artifact(self, artifact_id: str) -> dict[str, Any]:

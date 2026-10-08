@@ -11,6 +11,7 @@ class Project(BaseModel):
     description: str | None
     metadata: dict
     default_flow: str = "sdd"
+    language: str = ""
     created_at: datetime
     updated_at: datetime
 
@@ -21,3 +22,4 @@ class ProjectCreate(BaseModel):
     description: str | None = None
     metadata: dict = {}
     default_flow: str = "sdd"
+    language: str = ""
