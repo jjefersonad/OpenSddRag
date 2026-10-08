@@ -22,6 +22,18 @@ export const sddManifest = {
     { kind: "test" },
   ],
   harnessTriggers: ["always", "on_spec", "on_apply", "on_verify", "on_archive"],
+  // Ordered lifecycle phases (web-ui-design-alignment, flow-registry delta
+  // REQ-007): server-side data only — `init` does not generate files from
+  // this field, so golden template output stays byte-identical.
+  lifecycle: [
+    { name: "Propose", kinds: ["proposal"] },
+    { name: "Spec", kinds: ["spec", "test"] },
+    { name: "Design", kinds: ["design"] },
+    { name: "Tasks", kinds: ["task"] },
+    { name: "Apply", kinds: ["task"] },
+    { name: "Verify", kinds: ["test"] },
+    { name: "Archive", kinds: ["task"] },
+  ],
   skills: [
     "opensddrag-propose",
     "opensddrag-spec",

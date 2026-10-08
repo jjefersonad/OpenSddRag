@@ -32,3 +32,28 @@ test("unit-1: kinds are addressable by (flow, kind)", () => {
     assert.ok(pairs.includes(expected), `missing ${expected}`);
   }
 });
+test("unit-1: sdd manifest declares the ordered lifecycle (REQ-007)", () => {
+  const phases = sddManifest.lifecycle;
+  assert.ok(Array.isArray(phases) && phases.length === 7, "sdd lifecycle must have 7 phases");
+  const names = phases.map((p) => p.name);
+  assert.deepEqual(
+    names,
+    ["Propose", "Spec", "Design", "Tasks", "Apply", "Verify", "Archive"],
+    "lifecycle phases must be in canonical SDD order",
+  );
+  const declared = new Set(sddManifest.kinds.map((k) => (typeof k === "string" ? k : k.kind)));
+  for (const phase of phases) {
+    assert.ok(Array.isArray(phase.kinds) && phase.kinds.length >= 1, "each phase declares >=1 kind");
+    for (const kind of phase.kinds) {
+      assert.ok(declared.has(kind), `phase ${phase.name} kind ${kind} must be declared`);
+    }
+  }
+});
+
+test("unit-1: lifecycle kinds cover all five kinds exactly once", () => {
+  const phaseKinds = sddManifest.lifecycle.flatMap((p) => p.kinds);
+  const five = ["proposal", "spec", "design", "task", "test"];
+  for (const kind of five) {
+    assert.ok(phaseKinds.includes(kind), `kind ${kind} must appear in a phase`);
+  }
+});

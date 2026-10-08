@@ -1,8 +1,9 @@
 """Flow manifest schema — pure-domain validation (multi-flow-foundation).
 
 A flow manifest describes one workflow ("flow") as data: its artifact kinds
-with optional declarative validation rules, the harness triggers it uses,
-its skills and slash commands, and the `CLAUDE.md` section it installs.
+with optional declarative validation rules, its optional ordered lifecycle
+phases, the harness triggers it uses, its skills and slash commands, and the
+`CLAUDE.md` section it installs.
 `flow-registry` REQ-001 defines the schema; this module is its single
 authoritative parser/validator.
 
@@ -35,6 +36,19 @@ class ManifestKind(BaseModel):
     required_metadata_keys: list[str] = Field(default_factory=list)
 
 
+class ManifestPhase(BaseModel):
+    """One lifecycle phase declared by a flow (web-ui-design-alignment REQ-006).
+
+    A phase groups zero or more declared kinds in execution order — e.g. the
+    sdd flow's `Propose` phase carries `proposal`, while closing phases
+    (`Sync`, `Archive`) carry none. Pure data: validation of kind references
+    and name uniqueness happens in `manifest_issues`.
+    """
+
+    name: str
+    kinds: list[str] = Field(default_factory=list)
+
+
 class ManifestCommand(BaseModel):
     """One slash command contributed by the flow."""
 
@@ -52,6 +66,7 @@ class FlowManifest(BaseModel):
     flow: str
     kinds: list[ManifestKind]
     harness_triggers: list[str] = Field(default_factory=list)
+    lifecycle: list[ManifestPhase] = Field(default_factory=list)
     skills: list[str] = Field(default_factory=list)
     commands: list[ManifestCommand] = Field(default_factory=list)
     claude_md_section: str
@@ -114,6 +129,37 @@ def manifest_issues(payload: dict) -> list[str]:
             str(cmd.get("name") or "")
         ):
             issues.append(f"commands[{i}] must declare a non-empty 'name'")
+
+    lifecycle = payload.get("lifecycle")
+    if lifecycle is not None:
+        declared = {str(k["kind"]) for k in kinds_value or [] if isinstance(k, dict)}
+        names: list[str] = []
+        if not isinstance(lifecycle, list) or not lifecycle:
+            issues.append("lifecycle, when present, must be a non-empty list of phases")
+        else:
+            for i, phase in enumerate(lifecycle):
+                if not isinstance(phase, dict) or not str(phase.get("name") or "").strip():
+                    issues.append(f"lifecycle[{i}] must declare a non-empty 'name'")
+                    continue
+                phase_name = str(phase["name"])
+                if phase_name in names:
+                    issues.append(f"lifecycle[{i}] duplicates phase name {phase_name!r}")
+                names.append(phase_name)
+                phase_kinds = phase.get("kinds")
+                if not isinstance(phase_kinds, list):
+                    issues.append(
+                        f"lifecycle[{i}] 'kinds' must be a list (closing phases may declare an empty list)"
+                    )
+                    continue
+                if not phase_kinds:
+                    # closing phases (e.g. Sync/Archive) may carry no kinds
+                    continue
+                for kind in phase_kinds:
+                    if kind not in declared:
+                        issues.append(
+                            f"lifecycle[{i}] ({phase_name!r}) references kind "
+                            f"{kind!r} which is not declared in kinds"
+                        )
 
     if not str(payload.get("claude_md_section") or "").strip():
         issues.append("Manifest is missing required field: claude_md_section")

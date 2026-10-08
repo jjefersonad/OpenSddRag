@@ -117,3 +117,51 @@ def test_manifest_non_kebab_flow_suggestion() -> None:
     """A non-kebab flow slug is flagged (kebab-case enforced)."""
     issues = manifest_issues(_complete_manifest(flow="Docs Flow"))
     assert any("kebab" in i.lower() for i in issues), f"issues: {issues}"
+
+# ── Lifecycle (web-ui-design-alignment, flow-registry delta REQ-006) ──────────
+
+
+def test_valid_lifecycle_parsed_in_order() -> None:
+    """REQ-006: a valid lifecycle parses; phases keep their order and kinds."""
+    payload = _complete_manifest(
+        lifecycle=[
+            {"name": "Objective", "kinds": ["doc"]},
+            {"name": "Publication", "kinds": ["changelog"]},
+        ]
+    )
+    parsed = validate_manifest(payload)
+    assert [(p.name, p.kinds) for p in parsed.lifecycle] == [
+        ("Objective", ["doc"]),
+        ("Publication", ["changelog"]),
+    ]
+
+
+def test_lifecycle_phase_referencing_undeclared_kind_rejected() -> None:
+    """REQ-006: a phase referencing a kind absent from `kinds` is reported."""
+    payload = _complete_manifest(
+        lifecycle=[{"name": "Ghost", "kinds": ["ghost-kind"]}]
+    )
+    issues = manifest_issues(payload)
+    assert any("Ghost" in i and "ghost-kind" in i for i in issues), f"issues: {issues}"
+    with pytest.raises((ValueError, ValidationError)):
+        validate_manifest(payload)
+
+
+def test_lifecycle_duplicate_phase_names_rejected() -> None:
+    """REQ-006: two phases sharing a name are reported as duplicates."""
+    payload = _complete_manifest(
+        lifecycle=[
+            {"name": "Same", "kinds": ["doc"]},
+            {"name": "Same", "kinds": ["changelog"]},
+        ]
+    )
+    issues = manifest_issues(payload)
+    assert any("Same" in i for i in issues), f"issues: {issues}"
+    with pytest.raises((ValueError, ValidationError)):
+        validate_manifest(payload)
+
+
+def test_manifest_without_lifecycle_still_valid() -> None:
+    """REQ-006: lifecycle is optional — existing manifests stay valid."""
+    parsed = validate_manifest(_complete_manifest())
+    assert parsed.lifecycle == []
