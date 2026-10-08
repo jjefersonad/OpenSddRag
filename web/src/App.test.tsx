@@ -42,7 +42,7 @@ describe("AppShell (REQ-012)", () => {
     expect(screen.getByText(/docs & design system/i)).toBeInTheDocument();
     // Demo appears twice (sidebar link + dashboard card link) — use the
     // sidebar's copy, then assert the detail rendered.
-    const sidebarLink = within(sidebar).getByRole("link", { name: "Demo" });
+    const sidebarLink = within(sidebar).getByRole("link", { name: "demo" });
     fireEvent.click(sidebarLink);
     expect(await screen.findByRole("heading", { name: "Demo" })).toBeInTheDocument();
     await new Promise((resolve) => setTimeout(resolve, 0));

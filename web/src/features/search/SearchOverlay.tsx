@@ -19,8 +19,15 @@ export default function SearchOverlay() {
         setOpen(false);
       }
     }
+    function onOpenRequest() {
+      setOpen(true);
+    }
     document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
+    window.addEventListener("opsr:open-search", onOpenRequest);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("opsr:open-search", onOpenRequest);
+    };
   }, []);
 
   if (!open) return null;
