@@ -26,31 +26,62 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-// ── Unit 1: routes.tsx (REQ-002/REQ-008) ────────────────────────────────────
+// ── REQ-002: routing model with public landing ─────────────────────────────
 
-describe("routes", () => {
-  it("redirects an unknown route to the dashboard", async () => {
-    setToken("t");
-    mockFetch(() => jsonResponse(200, []));
-    renderAt("/xyz");
-    expect(await screen.findByText(/new project/i)).toBeInTheDocument();
-  });
-
-  it("redirects to /login when no token is stored", async () => {
+describe("routes (web-ui-design-alignment REQ-002)", () => {
+  it("renders the public landing at / with no token (no redirect)", async () => {
     mockFetch(() => jsonResponse(200, []));
     renderAt("/");
+    expect(await screen.findByTestId("landing-hero")).toBeInTheDocument();
+  });
+
+  it("redirects /projects to /login when no token is stored", async () => {
+    mockFetch(() => jsonResponse(200, []));
+    renderAt("/projects");
     expect(await screen.findByLabelText(/token/i)).toBeInTheDocument();
+  });
+
+  it("redirects /p/:slug to /login when no token is stored", async () => {
+    mockFetch(() => jsonResponse(200, []));
+    renderAt("/p/demo");
+    expect(await screen.findByLabelText(/token/i)).toBeInTheDocument();
+  });
+
+  it("renders the dashboard at /projects with a token", async () => {
+    setToken("t");
+    mockFetch(() => jsonResponse(200, []));
+    renderAt("/projects");
+    expect(await screen.findByText(/new project/i)).toBeInTheDocument();
   });
 
   it("renders the project detail shell at /p/:slug with a token", async () => {
     setToken("t");
-    mockFetch((url) =>
-      url.endsWith("/projects/demo")
-        ? jsonResponse(200, { id: "1", name: "Demo", slug: "demo", summary: { spec: 5 } })
-        : jsonResponse(200, []),
-    );
+    mockFetch((url) => {
+      if (url.endsWith("/projects/demo")) {
+        return jsonResponse(200, {
+          id: "1",
+          name: "Demo",
+          slug: "demo",
+          summary: { spec: 5 },
+          flows: [{ flow: "sdd", phase: null, task_progress: { done: 0, total: 0 } }],
+        });
+      }
+      if (url.endsWith("/flows")) {
+        return jsonResponse(200, [
+          { flow: "sdd", kinds: [{ kind: "spec", rules: {} }], lifecycle: null },
+        ]);
+      }
+      return jsonResponse(200, []);
+    });
     renderAt("/p/demo");
     expect(await screen.findByRole("heading", { name: "Demo" })).toBeInTheDocument();
     expect(screen.getByText(/specs/i)).toBeInTheDocument();
+  });
+
+  it("redirects an unknown route to /", async () => {
+    setToken("t");
+    mockFetch(() => jsonResponse(200, []));
+    renderAt("/xyz");
+    expect(await screen.findByTestId("landing-hero")).toBeInTheDocument();
   });
 });

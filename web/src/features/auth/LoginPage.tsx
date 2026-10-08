@@ -18,7 +18,9 @@ export default function LoginPage() {
       const ok = await verifyToken(value.trim());
       if (ok) {
         setToken(value.trim());
-        navigate("/");
+        // D1 route model: `/` became the public landing; the dashboard lives
+        // at `/projects`.
+        navigate("/projects");
       } else {
         setError("Invalid token — check MANAGEMENT_API_TOKEN and try again.");
       }

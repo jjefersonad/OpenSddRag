@@ -17,7 +17,9 @@ function renderLogin() {
     <MemoryRouter initialEntries={["/login"]}>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
-        <Route path="/" element={<div>Home</div>} />
+        {/* D1 route model: successful login lands on the dashboard at
+            /projects — `/` is the public landing now. */}
+        <Route path="/projects" element={<div>Home</div>} />
       </Routes>
     </MemoryRouter>,
   );

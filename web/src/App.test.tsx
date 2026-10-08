@@ -1,17 +1,68 @@
-import { describe, expect, it } from "vitest";
-import { render, screen } from "@testing-library/react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
-import App from "./App";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { createMemoryRouter, RouterProvider } from "react-router-dom";
+import { routes } from "./routes";
+import { setToken, setUnauthorizedHandler } from "./api/client";
 
-describe("App", () => {
-  it("renders the layout shell brand", () => {
-    render(
-      <MemoryRouter initialEntries={["/"]}>
-        <Routes>
-          <Route path="/" element={<App />} />
-        </Routes>
-      </MemoryRouter>,
-    );
-    expect(screen.getByText("OpenSddRag")).toBeInTheDocument();
+function jsonResponse(status: number, body: unknown) {
+  return { ok: status >= 200 && status < 300, status, json: async () => body } as unknown as Response;
+}
+function mockFetch(handler: (url: string) => Response) {
+  vi.stubGlobal("fetch", vi.fn(async (url: string) => handler(String(url))));
+}
+function renderAt(path: string) {
+  render(<RouterProvider router={createMemoryRouter(routes, { initialEntries: [path] })} />);
+}
+beforeEach(() => {
+  localStorage.clear();
+  setUnauthorizedHandler(() => {});
+});
+afterEach(() => {
+  cleanup();
+  localStorage.clear();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
+
+// ── REQ-012: AppShell sidebar on authenticated screens ──────────────────────
+
+describe("AppShell (REQ-012)", () => {
+  it("sidebar shows logo, docs link, projects list and sign-out + navigates", async () => {
+    setToken("t");
+    mockFetch((url) => {
+      if (url.endsWith("/projects")) return jsonResponse(200, [{ id: "1", name: "Demo", slug: "demo" }]);
+      if (url.endsWith("/projects/demo")) {
+        return jsonResponse(200, { id: "1", name: "Demo", slug: "demo", summary: {}, flows: [] });
+      }
+      return jsonResponse(200, []);
+    });
+    renderAt("/projects");
+    const sidebar = await screen.findByTestId("app-sidebar");
+    expect(sidebar).toBeInTheDocument();
+    expect(screen.getByText(/docs & design system/i)).toBeInTheDocument();
+    // Demo appears twice (sidebar link + dashboard card link) — use the
+    // sidebar's copy, then assert the detail rendered.
+    const sidebarLink = within(sidebar).getByRole("link", { name: "Demo" });
+    fireEvent.click(sidebarLink);
+    expect(await screen.findByRole("heading", { name: "Demo" })).toBeInTheDocument();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+
+  it("sign-out clears the token and returns to the landing", async () => {
+    setToken("t");
+    setUnauthorizedHandler(() => {});
+    mockFetch(() => jsonResponse(200, []));
+    renderAt("/projects");
+    const signout = await screen.findByRole("button", { name: /sign out/i });
+    fireEvent.click(signout);
+    expect(await screen.findByTestId("landing-hero")).toBeInTheDocument();
+    expect(localStorage.getItem("opensddrag.management_token")).toBeNull();
+    // Drain React's post-navigation scheduler ticks inside the live jsdom
+    // environment: the DOM scheduler bridges setTimeout; the node scheduler
+    // (production react-dom build) bridges setImmediate. Drain a few rounds
+    // so cascading ticks have nowhere left to run after teardown.
+    for (let round = 0; round < 5; round += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
   });
 });

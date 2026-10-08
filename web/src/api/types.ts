@@ -5,6 +5,11 @@ export interface Project {
   name: string;
   slug: string;
   description?: string | null;
+  language?: string;
+  /** Derived phase of the default flow (null when its flow has no lifecycle). */
+  phase?: string | null;
+  /** Aggregate task progress across flows (design D8). */
+  task_progress?: { done: number; total: number };
   created_at?: string | null;
   updated_at?: string | null;
 }
@@ -12,6 +17,10 @@ export interface Project {
 /** `GET /api/v1/projects/:slug` — project plus per-type artifact counts. */
 export interface ProjectDetailData extends Project {
   summary?: Record<string, number>;
+  /** Active change name (enriched detail, project delta REQ-003). */
+  change?: string | null;
+  /** Per-flow summaries (design D8). */
+  flows?: FlowSummary[];
 }
 
 /** An SDD artifact (proposal/spec/design/task/test). */
@@ -20,6 +29,7 @@ export interface Artifact {
   name: string;
   type: string;
   status: string;
+  flow?: string;
   metadata?: Record<string, unknown>;
   content?: string;
   created_at?: string | null;
@@ -45,4 +55,29 @@ export interface SearchResult {
   project: string;
   score: number;
   slug?: string | null;
+}
+
+/** One registered flow (web-api delta REQ-008). */
+export interface FlowInfo {
+  flow: string;
+  kinds: { kind: string; rules: Record<string, unknown> }[];
+  lifecycle: { name: string; kinds: string[] }[] | null;
+  harness_triggers?: string[];
+  registered_at?: string | null;
+}
+
+/** Per-flow summary of an enriched project detail (design D8). */
+export interface FlowSummary {
+  flow: string;
+  phase: string | null;
+  task_progress: { done: number; total: number };
+}
+
+/** One execution trace (episodic memory). */
+export interface ExecutionTrace {
+  id: string;
+  action: string;
+  query?: string | null;
+  result_summary?: string | null;
+  created_at?: string | null;
 }
