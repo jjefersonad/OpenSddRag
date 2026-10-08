@@ -15,7 +15,7 @@ from uuid import uuid4
 import pytest
 import pytest_asyncio
 
-from opensddrag.core.domain.flow_registry import register_flow
+from opensddrag.db.flow_registry import register_flow
 from opensddrag.db import project_repository
 from opensddrag.db.connection import get_conn
 from opensddrag.infrastructure.pg.tool_executors import (

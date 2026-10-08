@@ -26,7 +26,7 @@ import pytest
 import pytest_asyncio
 
 from opensddrag.core.domain.flow_manifest import FlowManifest
-from opensddrag.core.domain.flow_registry import (
+from opensddrag.db.flow_registry import (
     ensure_sdd_flow,
     register_flow,
     registered_kinds,
@@ -154,7 +154,7 @@ async def test_changed_manifest_replaces_kinds(project) -> None:
 
 @pytest.mark.asyncio
 async def test_malformed_manifest_aborts_with_no_partial_rows(project) -> None:
-    from opensddrag.core.domain.flow_registry import register_flow
+    from opensddrag.db.flow_registry import register_flow
 
     bad = {"flow": "broken", "kinds": [], "claude_md_section": "x"}
     await ensure_sdd_flow()
@@ -189,3 +189,48 @@ def registered_flows(snapshot: dict) -> list[str]:
 
 def registered_kinds(snapshot: dict, flow: str) -> set[str]:
     return {k for f, k in snapshot["kinds"] if f == flow}
+
+# ── Lifecycle persistence (web-ui-design-alignment, flow-registry delta REQ-007)
+
+
+_LIFECYCLE_MANIFEST = {
+    "flow": "docs",
+    "kinds": [
+        {"kind": "doc", "required_headings": ["## Objective"]},
+        {"kind": "changelog"},
+    ],
+    "harness_triggers": ["on_doc_publish"],
+    "lifecycle": [
+        {"name": "Objective", "kinds": ["doc"]},
+        {"name": "Publication", "kinds": ["changelog"]},
+    ],
+    "commands": [{"name": "draft", "folder": "docs"}],
+    "claude_md_section": "## OpenSddRag — docs flow\nMarker.",
+}
+
+
+async def test_register_flow_persists_lifecycle_and_replaces(project) -> None:
+    """REQ-007: registering a manifest WITH lifecycle marks `replaced`,
+    persists the lifecycle in the stored JSONB, and a second identical
+    registration is `unchanged` (idempotency preserved)."""
+    # First: register without lifecycle (baseline, as pre-existing manifests are)
+    base = {k: v for k, v in _LIFECYCLE_MANIFEST.items() if k != "lifecycle"}
+    await register_flow(base)
+
+    # Upgrade: same flow + lifecycle => status replaced
+    result = await register_flow(_LIFECYCLE_MANIFEST)
+    assert result["status"] == "replaced"
+
+    # Lifecycle persisted in the stored manifest
+    from opensddrag.db.connection import get_conn
+    import json
+
+    async with get_conn() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute("SELECT manifest::text FROM flows WHERE flow = 'docs'")
+            stored = json.loads((await cur.fetchone())[0])
+    assert stored["lifecycle"] == _LIFECYCLE_MANIFEST["lifecycle"]
+
+    # Idempotency maintained
+    again = await register_flow(_LIFECYCLE_MANIFEST)
+    assert again["status"] == "unchanged"

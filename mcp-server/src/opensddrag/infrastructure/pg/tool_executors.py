@@ -575,7 +575,7 @@ async def register_flow(
     `artifact_kinds` rows idempotently. Used by `opensddrag init` to
     register selected non-`sdd` flows when a server is reachable.
     """
-    from opensddrag.core.domain.flow_registry import register_flow as _register_flow
+    from opensddrag.db.flow_registry import register_flow as _register_flow
 
     manifest = args.get("manifest")
     if not isinstance(manifest, dict):

@@ -29,7 +29,7 @@ def init():
     import asyncio
     from opensddrag.db.connection import run_migrations
     from opensddrag.cli._seeds import seed_global_harness_rules, seed_sdd_skills
-    from opensddrag.core.domain.flow_registry import ensure_sdd_flow
+    from opensddrag.db.flow_registry import ensure_sdd_flow
 
     async def _run():
         console.print("[bold green]Running migrations...[/bold green]")
@@ -53,7 +53,7 @@ def register_flow(manifest_path: str):
     import pathlib
 
     from opensddrag.core.domain.flow_manifest import ManifestValidationError
-    from opensddrag.core.domain.flow_registry import register_flow
+    from opensddrag.db.flow_registry import register_flow
 
     async def _run():
         path = pathlib.Path(manifest_path)
