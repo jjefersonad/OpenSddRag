@@ -192,10 +192,16 @@ opensddrag-server server start --transport sse --port 8000
 Available endpoints in HTTP/SSE mode:
 - `POST /mcp` — MCP streamable-HTTP transport (auth: `Authorization: Bearer <api-key>`)
 - `GET /api/v1/projects` — list projects (management API; auth: `Authorization: Bearer <MANAGEMENT_API_TOKEN>`)
-- `POST /api/v1/projects` — create a project (management API)
-- `GET /api/v1/projects/:slug/artifacts?type=...` — list artifacts (management API)
+- `POST /api/v1/projects` — create a project (management API; optional `language`)
+- `GET /api/v1/projects/:slug/artifacts?type=...&flow=...` — list artifacts, optionally filtered by flow
+- `GET /api/v1/projects/:slug/session` — working-context summary (active artifacts + note)
 - `GET /api/v1/search?q=...` — semantic search (management API)
+- `GET /api/v1/flows` — registered flows with kinds + lifecycle (management API)
+- `GET /api/v1/projects/:slug/tree` — active change artifact hierarchy (nodes + edges per flow)
+- `GET /api/v1/projects/:slug/changes` — changes in progress, each with its per-change phase pipeline
 - `GET /` — built web dashboard, served only when `SERVE_WEB_UI=true`
+
+Flow manifests may declare an optional `lifecycle` (ordered phases mapping artifact kinds), so the dashboard derives per-flow progress from data — new flows render without UI changes.
 
 ### Tests
 

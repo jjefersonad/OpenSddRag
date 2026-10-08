@@ -176,8 +176,8 @@ uma seção de `CLAUDE.md` — sem código específico no servidor:
 
 | Arquivo | Responsabilidade |
 |---|---|
-| `core/domain/flow_manifest.py` | Schema puro do manifest (`FlowManifest`, `manifest_issues`, `validate_manifest`) |
-| `core/domain/flow_registry.py` | `ensure_sdd_flow`, `register_flow` (upsert idempotente em `flows`/`artifact_kinds`) |
+| `core/domain/flow_manifest.py` | Schema puro do manifest (`FlowManifest`, `manifest_issues`, `validate_manifest`); campo opcional `lifecycle` (fases ordenadas `{name, kinds}` — valida nomes únicos e referências a kinds declarados; web-ui-design-alignment REQ-006) |
+| `db/flow_registry.py` | `ensure_sdd_flow`, `register_flow` (upsert idempotente em `flows`/`artifact_kinds`) |
 | `core/domain/artifact_validation.py` | `validate_registered`: precedência `(flow, kind)` (built-in SDD → declarativo → fallback) |
 | `db/repository.get_artifact_kind_rules` | Lê `artifact_kinds.rules` do par `(flow, kind)` |
 
@@ -186,6 +186,29 @@ carregam `flow`; `projects.default_flow` resolve um `flow` omitido. As tools MCP
 `create_artifact`/`list_artifacts`/`search_semantic`/`get_harness_checklist` aceitam
 `flow` opcional, e `register_flow` ingere um manifest. No cliente, cada fluxo vive
 em `client/src/templates/flows/<slug>/` e é instalado via `init --flow`.
+
+**UI multi-flow (web-ui-design-alignment):** o manifest opcional `lifecycle`
+(fases ordenadas `{name, kinds}`) alimenta a derivação de fase por flow no
+management API — `GET /api/v1/projects/:slug` retorna resúmnes por flow
+(`{flow, phase, task_progress}`) e `GET /api/v1/flows` expõe o registry. Sem
+ lifecycle declarado, `phase` é `null` e a UI omite a phase strip (degradação
+graciosa). A coluna `projects.language` (migration 009) alimenta os cards.
+
+**Hierarquia (web-artifact-hierarchy):** `GET /api/v1/projects/:slug/tree`
+resolve o change ativo (mais recente `metadata.change_name` não-arquivado),
+os artifacts do change e os edges de `artifact_relationships` num único
+join — retorna `{change, flows: [{flow, nodes (id/name/type/status/depth),
+edges}]}`. Depth canônico: proposal 0, spec/design 1, task 2, test 3. A tab
+Hierarchy do dashboard renderiza a árvore como timeline vertical (padrão do
+protótipo) com chips por tipo e nós clicáveis.
+
+**Changes em andamento (web-overview-changes-pipeline):**
+`GET /api/v1/projects/:slug/changes` lista cada change viva do projeto com
+sua própria pipeline por fase (do lifecycle do manifesto): fases com
+artifacts arquivados = done, primeira fase aberta = active, resto pending.
+O agrupamento inclui os artifacts arquivados do change (necessários para
+marcar fases iniciais como done). O Overview do dashboard renderiza um card
+por change com a timeline vertical do protótipo.
 
 ---
 

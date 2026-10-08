@@ -97,11 +97,12 @@ src/opensddrag/
   db/session_repository.py
   db/skill_repository.py
   db/trace_repository.py
+  db/flow_registry.py     — register/upsert flows + artifact_kinds
   core/domain/artifact_validation.py — validate_registered: (flow, kind) registry
-  core/domain/flow_manifest.py — flow manifest schema (pure domain)
-  core/domain/flow_registry.py — register/upsert flows + artifact_kinds
+  core/domain/flow_manifest.py — flow manifest schema (pure domain; optional `lifecycle` phases)
   embedding/service.py    — sentence-transformers embed()
   web/                    — REST management API (/api/v1) for the dashboard
+  web/api/flows.py        — GET /api/v1/flows (flow registry read w/ lifecycle)
   infrastructure/management_service.py — SqlManagementService (management API)
   models/                 — pydantic models for all DB entities
 ```
