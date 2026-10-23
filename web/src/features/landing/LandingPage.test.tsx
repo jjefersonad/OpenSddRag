@@ -45,4 +45,16 @@ describe("LandingPage (REQ-011)", () => {
     fireEvent.click(cta);
     expect(await screen.findByLabelText(/token/i)).toBeInTheDocument();
   });
+
+  it("renders the grid background and glow without hiding the hero (REQ-018)", async () => {
+    render(<RouterProvider router={createMemoryRouter(routes, { initialEntries: ["/"] })} />);
+    const grid = await screen.findByTestId("landing-grid-bg");
+    const glow = screen.getByTestId("landing-glow");
+    for (const layer of [grid, glow]) {
+      expect(layer).toHaveStyle({ pointerEvents: "none" });
+      expect(layer.style.animationFillMode).not.toBe("both");
+    }
+    expect(screen.getByTestId("landing-hero")).toBeVisible();
+    expect(screen.getByTestId("landing-launch")).toBeVisible();
+  });
 });

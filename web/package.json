@@ -1,7 +1,7 @@
 {
   "name": "opensddrag-web",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.2.3",
   "type": "module",
   "description": "OpenSddRag web dashboard — Vite 7 + React 19 + TypeScript (web-management-system)",
   "scripts": {
@@ -14,7 +14,9 @@
   "dependencies": {
     "react": "19.3.0",
     "react-dom": "19.3.0",
-    "react-router-dom": "7.18.4"
+    "react-markdown": "10.1.0",
+    "react-router-dom": "7.18.4",
+    "remark-gfm": "4.0.1"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "6.9.1",

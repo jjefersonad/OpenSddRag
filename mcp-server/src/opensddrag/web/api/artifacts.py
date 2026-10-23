@@ -24,10 +24,18 @@ def artifact_routes(service: ManagementServiceProtocol) -> list[Route]:
     async def list_artifacts(request: Request) -> JSONResponse:
         type_filter = request.query_params.get("type")
         flow_filter = request.query_params.get("flow")
+        include = request.query_params.get("include")
+        if include is not None and include != "content":
+            return error_response(
+                422, "VALIDATION_ERROR", "unsupported include value", ["include must be 'content'"]
+            )
+        # The keyword is forwarded only when requested, so services that
+        # predate `include_content` keep working (design D5).
+        extra = {"include_content": True} if include == "content" else {}
         try:
             return JSONResponse(
                 await service.list_artifacts(
-                    request.path_params["slug"], type_filter, flow_filter
+                    request.path_params["slug"], type_filter, flow_filter, **extra
                 )
             )
         except Exception as exc:  # noqa: BLE001

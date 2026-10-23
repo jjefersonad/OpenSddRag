@@ -191,17 +191,20 @@ opensddrag-server server start --transport sse --port 8000
 
 Available endpoints in HTTP/SSE mode:
 - `POST /mcp` — MCP streamable-HTTP transport (auth: `Authorization: Bearer <api-key>`)
-- `GET /api/v1/projects` — list projects (management API; auth: `Authorization: Bearer <MANAGEMENT_API_TOKEN>`)
+- `GET /api/v1/projects` — list projects (management API; auth: `Authorization: Bearer <MANAGEMENT_API_TOKEN>`). Each entry is enriched with additive fields — `change` (most recently updated live change, nullable), `phase` (project phase, nullable), `phases` (mini pipeline of `{name, status}`) and `task_progress` (`{done, total}` over live changes only) — all derived per request from `core/domain/change_progress.py`
 - `POST /api/v1/projects` — create a project (management API; optional `language`)
-- `GET /api/v1/projects/:slug/artifacts?type=...&flow=...` — list artifacts, optionally filtered by flow
+- `GET /api/v1/projects/:slug/artifacts?type=...&flow=...` — list artifacts, optionally filtered by flow. Add `&include=content` to opt in to full artifact content; summaries ship **without** content by default, and any other `include` value is rejected with `422`
 - `GET /api/v1/projects/:slug/session` — working-context summary (active artifacts + note)
 - `GET /api/v1/search?q=...` — semantic search (management API)
 - `GET /api/v1/flows` — registered flows with kinds + lifecycle (management API)
 - `GET /api/v1/projects/:slug/tree` — active change artifact hierarchy (nodes + edges per flow)
-- `GET /api/v1/projects/:slug/changes` — changes in progress, each with its per-change phase pipeline
-- `GET /` — built web dashboard, served only when `SERVE_WEB_UI=true`
+- `GET /api/v1/projects/:slug/changes` — live changes in progress, each with `started_at` (earliest artifact `created_at`), `updated_at`, `task_progress` and a progress-based phase pipeline (see the data definitions below). List payload has **no** artifact `content`.
+- `GET /api/v1/projects/:slug/changes/:change` — one change's document bundle for the dashboard reader (auth: `Authorization: Bearer <MANAGEMENT_API_TOKEN>`). Response shape: `{change, flow, proposal, design, specs, tasks, task_count}` where `proposal`/`design` are full artifacts or `null`, `specs` are full artifacts (including `content`), and `tasks` are `{name, status, content, done}` (`done` is true when status is `archived` or `metadata.done`). Membership is `metadata.change_name` (same as MCP `read_change_bundle`); this REST path is **not** the MCP tool — MCP still omits task bodies. Unknown slug or change → HTTP 404.
+- `GET /` — built web dashboard, served only when `SERVE_WEB_UI=true`. The dashboard loads **IBM Plex Sans/Mono** via Google Fonts (a `<link>` in `web/index.html`; the token fallback stack lives in `web/src/styles/tokens.css`). Its visual fidelity is verified with `scripts/ui-fidelity/check.py` (a Playwright for Python script — a documented prerequisite, not a package.json dependency) against `docs/ui/FIDELITY_CHECKLIST.md` (the human-readable criteria list)
 
 Flow manifests may declare an optional `lifecycle` (ordered phases mapping artifact kinds), so the dashboard derives per-flow progress from data — new flows render without UI changes.
+
+**Dashboard data definitions.** A **live change** is any change whose artifacts include something other than an archived artifact or a *synced main spec*; a synced main spec is a spec with `metadata.is_delta != true` AND `status == active` (active non-delta specs of changes still in flight still count as live). A **task is done** when `metadata.done == true` or its status is `archived`. Per-change **phases are progress-based**: phases are evaluated in lifecycle order and reached by evidence (a new artifact kind appearing marks the phase reached; repeated-kind phases become reachable once the previous phase's artifacts are done), and a phase counts as done when all earlier phases are reached and done. Project-level aggregates (`change`, `phase`, `task_progress`) are computed over **live changes only**.
 
 ### Tests
 

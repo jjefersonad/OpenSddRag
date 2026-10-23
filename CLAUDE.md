@@ -100,10 +100,11 @@ src/opensddrag/
   db/flow_registry.py     — register/upsert flows + artifact_kinds
   core/domain/artifact_validation.py — validate_registered: (flow, kind) registry
   core/domain/flow_manifest.py — flow manifest schema (pure domain; optional `lifecycle` phases)
+  core/domain/change_progress.py — pure live-change grouping, progress-based phase derivation, task/project progress (change/phase/progress semantics)
   embedding/service.py    — sentence-transformers embed()
   web/                    — REST management API (/api/v1) for the dashboard
   web/api/flows.py        — GET /api/v1/flows (flow registry read w/ lifecycle)
-  infrastructure/management_service.py — SqlManagementService (management API)
+  infrastructure/management_service.py — SqlManagementService (management API; enriched /projects payloads include change/phase/phases/task_progress; artifacts list supports include=content; get_change_bundle serves GET /projects/:slug/changes/:change)
   models/                 — pydantic models for all DB entities
 ```
 
@@ -128,7 +129,7 @@ All vector columns use HNSW indexes (`vector_cosine_ops`). Embeddings are 384-di
 ### MCP transports
 
 - **stdio**: Claude Code spawns `opensddrag-server server start` as a child process. Configured via `.mcp.json` in the client project with `type: "http"` pointing to the SSE endpoint.
-- **SSE / HTTP**: Starlette app exposing the MCP streamable-HTTP transport at `/mcp` (auth: Bearer API key) for Docker/remote use. It also exposes the management REST API under `/api/v1/...` (auth: Bearer `MANAGEMENT_API_TOKEN`) and, when `SERVE_WEB_UI=true`, the built dashboard at `/`.
+- **SSE / HTTP**: Starlette app exposing the MCP streamable-HTTP transport at `/mcp` (auth: Bearer API key) for Docker/remote use. It also exposes the management REST API under `/api/v1/...` (auth: Bearer `MANAGEMENT_API_TOKEN`) and, when `SERVE_WEB_UI=true`, the built dashboard at `/`. The web dashboard loads IBM Plex fonts via Google Fonts, and its visual fidelity is verified with `scripts/ui-fidelity/check.py` against `docs/ui/FIDELITY_CHECKLIST.md`.
 
 ### SDD artifact lifecycle
 

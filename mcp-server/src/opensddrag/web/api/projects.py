@@ -63,6 +63,17 @@ def project_routes(service: ManagementServiceProtocol) -> list[Route]:
         except Exception as exc:  # noqa: BLE001
             return response_for_error(exc)
 
+    async def get_change_bundle(request: Request) -> JSONResponse:
+        try:
+            return JSONResponse(
+                await service.get_change_bundle(
+                    request.path_params["slug"],
+                    request.path_params["change"],
+                )
+            )
+        except Exception as exc:  # noqa: BLE001
+            return response_for_error(exc)
+
     return [
         Route("/api/v1/projects", require_management_token(list_projects), methods=["GET"]),
         Route("/api/v1/projects", require_management_token(create_project), methods=["POST"]),
@@ -80,6 +91,11 @@ def project_routes(service: ManagementServiceProtocol) -> list[Route]:
         Route(
             "/api/v1/projects/{slug}/changes",
             require_management_token(list_changes),
+            methods=["GET"],
+        ),
+        Route(
+            "/api/v1/projects/{slug}/changes/{change}",
+            require_management_token(get_change_bundle),
             methods=["GET"],
         ),
     ]

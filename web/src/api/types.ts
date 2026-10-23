@@ -8,8 +8,12 @@ export interface Project {
   language?: string;
   /** Derived phase of the default flow (null when its flow has no lifecycle). */
   phase?: string | null;
-  /** Aggregate task progress across flows (design D8). */
+  /** Aggregate task progress across live changes (project-management REQ-007). */
   task_progress?: { done: number; total: number };
+  /** Most recently updated live change (null when none). */
+  change?: string | null;
+  /** Mini pipeline of that change: one entry per lifecycle phase. */
+  phases?: { name: string; status: "done" | "active" | "pending" }[];
   created_at?: string | null;
   updated_at?: string | null;
 }

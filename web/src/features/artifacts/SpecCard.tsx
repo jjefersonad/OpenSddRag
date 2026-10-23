@@ -1,5 +1,8 @@
 import { useState } from "react";
 import type { Artifact } from "../../api/types";
+import MarkdownBody from "../../components/MarkdownBody";
+import { parseRequirements } from "./parsers";
+import SpecRequirementsBody from "./SpecRequirementsBody";
 
 const STATUS_COLOR: Record<string, string> = {
   draft: "var(--color-warn)",
@@ -7,9 +10,14 @@ const STATUS_COLOR: Record<string, string> = {
   archived: "var(--color-text-tertiary)",
 };
 
-/** Expandable spec card — the AGENT_GUIDE §5 `expandedSpecs` behaviour. */
-export default function SpecCard({ artifact }: { artifact: Artifact }) {
+/** Full spec card (REQ-015): collapsed header with chevron, mono spec name,
+ *  parsed requirement count and status chip; expanded body renders the parsed
+ *  requirements — falling back to the raw content when nothing parses (the
+ *  "No parsed requirements" placeholder must never render). */
+export default function SpecCard({ artifact, title }: { artifact: Artifact; title?: string }) {
   const [expanded, setExpanded] = useState(false);
+  const reqCount = parseRequirements(artifact.content ?? "").length;
+  const heading = title ?? artifact.name;
 
   return (
     <article
@@ -38,7 +46,13 @@ export default function SpecCard({ artifact }: { artifact: Artifact }) {
           gap: "8px",
         }}
       >
-        <span style={{ fontFamily: "var(--font-mono)" }}>{artifact.name}</span>
+        <span style={{ display: "flex", alignItems: "baseline", gap: "8px", minWidth: 0 }}>
+          <span aria-hidden="true">{expanded ? "▾" : "▸"}</span>
+          <span style={{ fontFamily: title ? "inherit" : "var(--font-mono)" }}>{heading}</span>
+          <span style={{ color: "var(--color-text-secondary)", fontSize: "12px" }}>
+            {reqCount} requirements
+          </span>
+        </span>
         <span
           className="label"
           style={{ color: STATUS_COLOR[artifact.status] ?? "var(--color-text-secondary)" }}
@@ -47,18 +61,15 @@ export default function SpecCard({ artifact }: { artifact: Artifact }) {
         </span>
       </button>
       {expanded ? (
-        <pre
-          style={{
-            margin: 0,
-            padding: "0 14px 14px",
-            whiteSpace: "pre-wrap",
-            color: "var(--color-text-secondary)",
-            fontFamily: "var(--font-mono)",
-            fontSize: "12px",
-          }}
-        >
-          {artifact.content ?? ""}
-        </pre>
+        reqCount > 0 ? (
+          <div style={{ padding: "0 14px 14px" }}>
+            <SpecRequirementsBody artifact={artifact} />
+          </div>
+        ) : (
+          <div style={{ padding: "0 14px 14px" }}>
+            <MarkdownBody>{artifact.content ?? ""}</MarkdownBody>
+          </div>
+        )
       ) : null}
     </article>
   );

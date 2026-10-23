@@ -1,4 +1,5 @@
 import type { Artifact } from "../../api/types";
+import MarkdownBody from "../../components/MarkdownBody";
 import { hasStructuredRenderer } from "./parsers";
 
 /**
@@ -25,9 +26,7 @@ export default function GenericArtifactView({ artifact }: { artifact: Artifact }
           </li>
         ))}
       </ul>
-      <pre style={{ margin: 0, whiteSpace: "pre-wrap", color: "var(--color-text-secondary)", fontSize: "13px", fontFamily: "var(--font-mono)" }}>
-        {artifact.content ?? ""}
-      </pre>
+      <MarkdownBody>{artifact.content ?? ""}</MarkdownBody>
     </article>
   );
 }

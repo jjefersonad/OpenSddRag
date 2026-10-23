@@ -70,6 +70,10 @@ export function parseRequirements(content: string): ParsedRequirement[] {
         shall: "",
         scenarios: [],
       };
+      // A new requirement block ends the previous block's scenario context —
+      // otherwise the stale cursor would swallow this requirement's SHALL
+      // lines (REQ-015: every requirement must keep its SHALL text).
+      scenario = null;
       mode = null;
       continue;
     }
@@ -152,4 +156,73 @@ export function hasStructuredRenderer(kind: string): boolean {
 
 export function artifactFlow(artifact: Artifact): string {
   return artifact.flow ?? "sdd";
+}
+
+export interface DisplayTitleInput {
+  type: string;
+  name: string;
+  content?: string;
+  changeName?: string;
+}
+
+/** First non-empty paragraph of a section (blank-line separated). */
+function firstParagraph(text: string): string {
+  const trimmed = text.trim();
+  if (!trimmed) return "";
+  const para = trimmed.split(/\n\s*\n/)[0].trim();
+  return para
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .join(" ");
+}
+
+function headingOne(content: string): string {
+  const match = /^#\s+(.+)$/m.exec(content);
+  return match ? match[1].trim() : "";
+}
+
+function cleanedName(name: string, type: string, changeName: string): string {
+  if (type === "task") {
+    const prefix = changeName ? `${changeName}-task-` : null;
+    if (prefix && name.startsWith(prefix)) {
+      return name.slice(prefix.length) || name;
+    }
+    const marker = "-task-";
+    const at = name.indexOf(marker);
+    if (at >= 0) {
+      const rest = name.slice(at + marker.length);
+      if (rest) return rest;
+    }
+    return name;
+  }
+  let stripped = name;
+  if (changeName && stripped.startsWith(`${changeName}-`)) {
+    stripped = stripped.slice(changeName.length + 1);
+  }
+  if (type === "proposal" && stripped.endsWith("-proposal")) {
+    stripped = stripped.slice(0, -"-proposal".length);
+  }
+  if (type === "spec" && stripped.endsWith("-spec")) {
+    stripped = stripped.slice(0, -"-spec".length);
+  }
+  return stripped.replace(/^-+|-+$/g, "") || name;
+}
+
+/** Human title for a change document (change-reader REQ-001, design D4). */
+export function displayTitle(input: DisplayTitleInput): string {
+  const content = input.content ?? "";
+  const changeName = input.changeName ?? "";
+  let derived = "";
+  if (input.type === "proposal") {
+    derived = firstParagraph(parseSections(content, ["Why"])["Why"]) || headingOne(content);
+  } else if (input.type === "spec") {
+    derived = firstParagraph(parseSections(content, ["Purpose"])["Purpose"]);
+  } else if (input.type === "design") {
+    derived = firstParagraph(parseSections(content, ["Context"])["Context"]) || headingOne(content);
+  } else if (input.type === "task") {
+    derived = firstParagraph(parseSections(content, ["Goal"])["Goal"]);
+  }
+  const title = derived || cleanedName(input.name, input.type, changeName) || changeName || input.name;
+  return title.trim() || input.name;
 }

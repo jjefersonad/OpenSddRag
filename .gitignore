@@ -53,5 +53,6 @@ openspec/
 .claude/
 .agents/
 .mcp.json
+.cursor/mcp.json
 opensddrag.yaml
 opencode.json

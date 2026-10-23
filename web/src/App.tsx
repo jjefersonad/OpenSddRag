@@ -4,6 +4,7 @@ import SearchOverlay from "./features/search/SearchOverlay";
 import { listProjects } from "./api/projects";
 import { clearToken } from "./api/client";
 import type { Project } from "./api/types";
+import { projectSlugFromPath } from "./lib/path";
 import "./styles/base.css";
 
 /**
@@ -23,7 +24,7 @@ export default function App() {
   const [projects, setProjects] = useState<Project[]>([]);
   const navigate = useNavigate();
   const location = useLocation();
-  const activeSlug = location.pathname.startsWith("/p/") ? location.pathname.slice(3) : null;
+  const activeSlug = projectSlugFromPath(location.pathname);
   const isDashboard = !activeSlug;
 
   useEffect(() => {
@@ -236,7 +237,7 @@ export default function App() {
             zIndex: 20,
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: 9, fontFamily: "var(--font-mono)", fontSize: 13, color: "#8a9298" }}>
+          <div data-testid="app-breadcrumb" style={{ display: "flex", alignItems: "center", gap: 9, fontFamily: "var(--font-mono)", fontSize: 13, color: "#8a9298" }}>
             <Link to="/projects" style={{ color: "#8a9298", textDecoration: "none" }}>
               projects
             </Link>

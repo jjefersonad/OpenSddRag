@@ -54,6 +54,8 @@ class StubService:
         self.rules_by_slug = rules_by_slug or {}
         self.traces_by_slug = traces_by_slug or {}
         self.search_results = search_results or []
+        self.bundles: dict[tuple[str, str], dict] = {}
+        self.changes_by_slug: dict[str, list] = {}
 
     async def list_projects(self):
         return list(self.projects)
@@ -107,6 +109,16 @@ class StubService:
 
     async def search(self, query, limit=5):
         return list(self.search_results)[:limit]
+
+    async def get_change_bundle(self, slug, change):
+        if (slug, change) not in self.bundles:
+            raise ResourceNotFoundError(f"change {change!r} not found in project {slug!r}")
+        return self.bundles[(slug, change)]
+
+    async def list_changes(self, slug):
+        if slug not in self.changes_by_slug:
+            raise ResourceNotFoundError(f"project {slug!r} not found")
+        return list(self.changes_by_slug[slug])
 
 
 @pytest.fixture(autouse=True)
@@ -421,3 +433,170 @@ def test_tree_endpoint_route() -> None:
 
     unauth = client.get("/api/v1/projects/demo/tree")
     assert unauth.status_code == 401
+
+
+# ── include=content opt-in (web-ui-prototype-fidelity, web-api REQ-013) ─────
+
+
+class ContentStubService(StubService):
+    """Stub whose list_artifacts accepts the opt-in `include_content` keyword."""
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.calls: list[dict] = []
+
+    async def list_artifacts(
+        self, slug, type_filter=None, flow_filter=None, include_content=False
+    ):
+        self.calls.append({"slug": slug, "include_content": include_content})
+        items = await super().list_artifacts(slug, type_filter, flow_filter)
+        if include_content:
+            return [{**a, "content": f"# {a['name']}"} for a in items]
+        return items
+
+
+def _content_service() -> ContentStubService:
+    return ContentStubService(
+        artifacts_by_slug={"demo": [{"id": "a1", "name": "spec-a", "type": "spec", "status": "active"}]}
+    )
+
+
+def test_artifacts_include_content_is_forwarded_to_the_service() -> None:
+    svc = _content_service()
+    resp = _client(svc).get(
+        "/api/v1/projects/demo/artifacts?type=spec&include=content", headers=_auth()
+    )
+    assert resp.status_code == 200
+    assert svc.calls == [{"slug": "demo", "include_content": True}]
+    assert resp.json()[0]["content"] == "# spec-a"
+
+
+def test_artifacts_default_list_does_not_pass_the_keyword() -> None:
+    # The base StubService keeps the OLD signature (no include_content): the
+    # router must not pass the new keyword unless the client asked for it.
+    svc = StubService(
+        artifacts_by_slug={"demo": [{"id": "a1", "name": "spec-a", "type": "spec", "status": "active"}]}
+    )
+    resp = _client(svc).get("/api/v1/projects/demo/artifacts?type=spec", headers=_auth())
+    assert resp.status_code == 200
+    assert "content" not in resp.json()[0]
+
+
+def test_artifacts_include_with_other_value_is_422() -> None:
+    svc = _content_service()
+    resp = _client(svc).get("/api/v1/projects/demo/artifacts?include=foo", headers=_auth())
+    assert resp.status_code == 422
+    assert resp.json()["error"]["code"] == "VALIDATION_ERROR"
+    assert svc.calls == []
+
+
+# ── Change bundle stub (web-change-reader D7) ────────────────────────────────
+
+
+def test_stub_get_change_bundle_returns_payload_or_not_found() -> None:
+    import asyncio
+
+    svc = StubService()
+    payload = {
+        "change": "chg-a",
+        "flow": "sdd",
+        "proposal": {"name": "chg-a-proposal", "content": "# P"},
+        "design": None,
+        "specs": [],
+        "tasks": [],
+        "task_count": 0,
+    }
+    svc.bundles[("demo", "chg-a")] = payload
+    assert asyncio.run(svc.get_change_bundle("demo", "chg-a")) == payload
+    with pytest.raises(ResourceNotFoundError):
+        asyncio.run(svc.get_change_bundle("demo", "missing"))
+
+
+# ── Change bundle HTTP route (web-change-reader backend-2, REQ-014) ──────────
+
+
+_BUNDLE = {
+    "change": "web-change-reader",
+    "flow": "sdd",
+    "proposal": {
+        "id": "p1",
+        "name": "web-change-reader-proposal",
+        "type": "proposal",
+        "content": "# Why\nHuman can read the change.",
+    },
+    "design": {
+        "id": "d1",
+        "name": "web-change-reader-design",
+        "type": "design",
+        "content": "# Context\nREST bundle, not MCP.",
+    },
+    "specs": [
+        {"id": "s1", "name": "alpha-spec", "type": "spec", "content": "# Alpha"},
+        {"id": "s2", "name": "beta-spec", "type": "spec", "content": "# Beta"},
+    ],
+    "tasks": [
+        {"name": "t1", "status": "archived", "content": "## Goal\ng1", "done": True},
+        {"name": "t2", "status": "archived", "content": "## Goal\ng2", "done": True},
+        {"name": "t3", "status": "archived", "content": "## Goal\ng3", "done": True},
+        {"name": "t4", "status": "draft", "content": "## Goal\ng4", "done": False},
+    ],
+    "task_count": 4,
+}
+
+
+def test_get_change_bundle_http_returns_bodies() -> None:
+    svc = StubService()
+    svc.bundles[("demo", "web-change-reader")] = _BUNDLE
+    resp = _client(svc).get(
+        "/api/v1/projects/demo/changes/web-change-reader", headers=_auth()
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["proposal"]["content"]
+    assert body["design"]["content"]
+    assert all("content" in spec for spec in body["specs"])
+    assert all("content" in task for task in body["tasks"])
+    assert body["task_count"] == 4
+    assert body["task_count"] == len(body["tasks"])
+
+
+def test_get_change_bundle_http_unknown_is_404() -> None:
+    svc = StubService()
+    missing_change = _client(svc).get(
+        "/api/v1/projects/demo/changes/does-not-exist", headers=_auth()
+    )
+    assert missing_change.status_code == 404
+    payload = missing_change.json()
+    assert payload["error"]["code"] == "NOT_FOUND"
+    assert "proposal" not in payload
+    assert "specs" not in payload
+
+    missing_slug = _client(svc).get(
+        "/api/v1/projects/nope/changes/web-change-reader", headers=_auth()
+    )
+    assert missing_slug.status_code == 404
+    assert missing_slug.json()["error"]["code"] == "NOT_FOUND"
+
+    unauth = _client(svc).get("/api/v1/projects/demo/changes/web-change-reader")
+    assert unauth.status_code == 401
+
+
+def test_list_changes_http_shape_unchanged() -> None:
+    svc = StubService()
+    svc.changes_by_slug["demo"] = [
+        {
+            "change": "chg-a",
+            "flow": "sdd",
+            "started_at": "2026-10-01T09:00:00Z",
+            "updated_at": "2026-10-08T11:00:00Z",
+            "task_progress": {"done": 0, "total": 1},
+            "phases": [{"name": "Propose", "status": "active", "desc": "d"}],
+        }
+    ]
+    resp = _client(svc).get("/api/v1/projects/demo/changes", headers=_auth())
+    assert resp.status_code == 200
+    body = resp.json()
+    assert isinstance(body, list)
+    assert body[0]["change"] == "chg-a"
+    assert "content" not in body[0]
+    assert {"change", "flow", "updated_at", "task_progress", "phases"} <= set(body[0])

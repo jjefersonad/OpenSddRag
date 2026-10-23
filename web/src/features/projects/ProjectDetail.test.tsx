@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import { routes } from "../../routes";
 
@@ -26,7 +26,7 @@ const DETAIL = {
   id: "1",
   name: "Demo",
   slug: "demo",
-  language: "Python",
+  language: "TypeScript",
   summary: { proposal: 1, spec: 2, task: 4 },
   flows: [
     { flow: "sdd", phase: "Design", task_progress: { done: 2, total: 4 } },
@@ -39,6 +39,23 @@ function wire(): UrlHandler {
   return (url) => {
     if (url.endsWith("/projects/demo")) return jsonResponse(200, DETAIL);
     if (url.includes("/artifacts?type=")) return jsonResponse(200, []);
+    if (/\/changes\/[^/?]+/.test(url)) {
+      return jsonResponse(200, {
+        change: "add-stripe-billing",
+        flow: "sdd",
+        proposal: {
+          id: "p1",
+          name: "add-stripe-billing-proposal",
+          type: "proposal",
+          status: "draft",
+          content: "# P\n\n## Why\nBill customers.",
+        },
+        design: null,
+        specs: [],
+        tasks: [],
+        task_count: 0,
+      });
+    }
     if (url.includes("/changes")) {
       return jsonResponse(200, [
         {
@@ -49,7 +66,8 @@ function wire(): UrlHandler {
           phases: [
             { name: "Propose", status: "done", desc: "d" },
             { name: "Spec", status: "done", desc: "d" },
-            { name: "Design", status: "active", desc: "d" },
+            { name: "Design", status: "done", desc: "d" },
+            { name: "Tasks", status: "active", desc: "d" },
           ],
         },
       ]);
@@ -92,37 +110,119 @@ function renderDetail() {
   render(<RouterProvider router={createMemoryRouter(routes, { initialEntries: ["/p/demo"] })} />);
 }
 
-// REQ-014 — detail overview, multi-flow aware (design D6/D7/D8)
+// REQ-014 — detail overview, tab counts and per-change timelines (design D7)
 
 describe("ProjectDetail overview (REQ-014)", () => {
-  it("renders breadcrumb, tab counts and per-flow phase strips", async () => {
+  it("renders the header, tab counts and the paginated change list in the overview", async () => {
     renderDetail();
-    expect(await screen.findByTestId("detail-breadcrumb")).toBeInTheDocument();
-    expect(screen.getByText(/projects \/ demo/i)).toBeInTheDocument();
+    expect(await screen.findByTestId("app-h1")).toBeInTheDocument();
     // tabs with counts
     expect(screen.getByRole("tab", { name: /Specs\s*2/i })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /Tasks\s*4/i })).toBeInTheDocument();
-    // Changes-in-progress card with per-change phase timeline (REQ-014 delta:
-    // the per-flow strip was superseded by per-change granularity)
     const card = await screen.findByTestId("change-card-add-stripe-billing");
     expect(card).toBeInTheDocument();
-    expect(await waitFor(() => screen.getByTestId("phase-add-stripe-billing-Design"))).toBeInTheDocument();
-    expect(screen.getByText("Propose")).toBeInTheDocument();
-  });
-
-  it("omits the phase strip for flows without a declared lifecycle", async () => {
-    renderDetail();
-    await screen.findByTestId("detail-breadcrumb");
-    // flow without lifecycle → its change card renders without phase timeline
-    await screen.findByTestId("working-context-panel");
+    expect(card).toHaveAttribute("href", "/p/demo/c/add-stripe-billing");
+    expect(within(card).getByTestId("change-stage-add-stripe-billing")).toHaveTextContent("Tasks");
   });
 
   it("overview tab shows working context and execution traces", async () => {
     renderDetail();
-    await screen.findByTestId("detail-breadcrumb");
+    await screen.findByTestId("app-h1");
     expect(await screen.findByTestId("working-context-panel")).toBeInTheDocument();
     expect(screen.getByText("working")).toBeInTheDocument(); // the note
     expect(screen.getByTestId("traces-panel")).toBeInTheDocument();
     expect(screen.getByText(/apply_task/i)).toBeInTheDocument();
+  });
+});
+// REQ-014 — detail header + horizontal strip (design D7, task frontend-4 unit-2)
+
+describe("ProjectDetail header (REQ-014)", () => {
+  it("shows stage chip, change line and the horizontal strip states", async () => {
+    renderDetail();
+    const chip = await screen.findByTestId("detail-stage-chip");
+    expect(chip).toHaveTextContent("Tasks");
+    const line = screen.getByTestId("header-change-line");
+    expect(line).toHaveTextContent("change: add-stripe-billing · TypeScript");
+    const strip = await screen.findByTestId("phase-strip-sdd");
+    expect(strip).toBeInTheDocument();
+    for (const phase of ["Propose", "Spec", "Design"]) {
+      expect(screen.getByTestId(`strip-phase-sdd-${phase}`).dataset.state).toBe("done");
+    }
+    expect(screen.getByTestId("strip-phase-sdd-Tasks").dataset.state).toBe("active");
+    // REQ-020 tab order: Overview, one per registered kind, Hierarchy, Harness
+    const labels = screen.getAllByRole("tab").map((t) => t.textContent!.replace(/\d+$/, "").trim());
+    expect(labels).toEqual(["Overview", "Proposal", "Specs", "Design", "Tasks", "Doc", "Hierarchy", "Harness"]);
+  });
+
+  it("renders no strip and keeps the tabs when there is no live change", async () => {
+    const wired = wire();
+    handler = (url) => (url.includes("/changes") ? jsonResponse(200, []) : wired(url));
+    render(<RouterProvider router={createMemoryRouter(routes, { initialEntries: ["/p/demo"] })} />);
+    await screen.findByTestId("app-h1");
+    expect(screen.queryByTestId(/phase-strip-/)).not.toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /Overview/i })).toBeInTheDocument();
+  });
+
+  it("renders no strip when the active change's flow declares no lifecycle", async () => {
+    const wired = wire();
+    handler = (url) => {
+      if (url.includes("/changes")) {
+        return jsonResponse(200, [
+          {
+            change: "docs-refresh",
+            flow: "docs",
+            updated_at: "2026-10-08T11:00:00Z",
+            task_progress: { done: 0, total: 2 },
+            phases: [],
+          },
+        ]);
+      }
+      return wired(url);
+    };
+    render(<RouterProvider router={createMemoryRouter(routes, { initialEntries: ["/p/demo"] })} />);
+    await screen.findByTestId("app-h1");
+    expect(screen.queryByTestId("phase-strip-docs")).not.toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /Overview/i })).toBeInTheDocument();
+    // no timeline for the lifecycle-less change, right-column panels still render
+    expect(screen.queryByTestId("phase-docs-refresh-Propose")).not.toBeInTheDocument();
+    expect(await screen.findByTestId("working-context-panel")).toBeInTheDocument();
+  });
+});
+
+// REQ-014 — single breadcrumb in the shell + shared getChanges fetch (task frontend-4 unit-3)
+
+describe("ProjectDetail breadcrumb and fetches (REQ-014)", () => {
+  it("renders exactly one breadcrumb (the shell's) and fetches changes once", async () => {
+    const changeCalls: string[] = [];
+    const wired = wire();
+    handler = (url) => {
+      if (url.includes("/changes")) {
+        changeCalls.push(url);
+      }
+      return wired(url);
+    };
+    render(<RouterProvider router={createMemoryRouter(routes, { initialEntries: ["/p/demo"] })} />);
+    await screen.findByTestId("app-h1");
+    expect(await screen.findByTestId("working-context-panel")).toBeInTheDocument();
+
+    const breadcrumb = screen.getByTestId("app-breadcrumb");
+    expect(breadcrumb.textContent).toMatch(/^projects\s*\/\s*demo$/);
+    expect(screen.queryByTestId("detail-breadcrumb")).not.toBeInTheDocument();
+
+    expect(changeCalls).toHaveLength(1);
+  });
+});
+
+describe("ProjectDetail change reader (REQ-021)", () => {
+  it("renders ChangeReader as the main panel on /p/:slug/c/:change", async () => {
+    handler = wire();
+    render(
+      <RouterProvider router={createMemoryRouter(routes, { initialEntries: ["/p/demo/c/add-stripe-billing"] })} />,
+    );
+    expect(await screen.findByTestId("change-reader")).toBeInTheDocument();
+    expect(screen.getAllByText("Bill customers.").length).toBeGreaterThan(0);
+    expect(screen.getByTestId("reader-back-overview")).toHaveAttribute("href", "/p/demo");
+    expect(screen.queryByTestId("working-context-panel")).not.toBeInTheDocument();
+    expect(screen.getByTestId("app-h1")).toBeInTheDocument();
   });
 });

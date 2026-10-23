@@ -46,7 +46,46 @@ const TERMINAL_LINES: { prompt?: string; out?: string }[] = [
 
 export default function LandingPage() {
   return (
-    <div style={{ minHeight: "100%", background: "var(--color-page)", color: "var(--color-text)" }}>
+    <div
+      style={{
+        position: "relative",
+        overflow: "hidden",
+        minHeight: "100%",
+        background: "var(--color-page)",
+        color: "var(--color-text-primary)",
+      }}
+    >
+      {/* decorative layers (REQ-018): never intercept clicks, never hide content */}
+      <div
+        data-testid="landing-grid-bg"
+        aria-hidden="true"
+        style={{
+          position: "absolute",
+          inset: 0,
+          pointerEvents: "none",
+          backgroundImage:
+            "linear-gradient(rgba(255,255,255,0.025) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.025) 1px,transparent 1px)",
+          backgroundSize: "44px 44px",
+          animation: "gridmove 18s linear infinite",
+          maskImage: "radial-gradient(ellipse 80% 60% at 50% 0%,#000 30%,transparent 75%)",
+          WebkitMaskImage: "radial-gradient(ellipse 80% 60% at 50% 0%,#000 30%,transparent 75%)",
+        }}
+      />
+      <div
+        data-testid="landing-glow"
+        aria-hidden="true"
+        style={{
+          position: "absolute",
+          top: "-180px",
+          left: "50%",
+          transform: "translateX(-50%)",
+          width: "760px",
+          height: "420px",
+          pointerEvents: "none",
+          background: "radial-gradient(ellipse,rgba(16,185,129,0.14),transparent 68%)",
+        }}
+      />
+      <div style={{ position: "relative", zIndex: 1 }}>
       <PublicNav />
 
       {/* hero + terminal */}
@@ -98,7 +137,7 @@ export default function LandingPage() {
               data-testid="landing-launch"
               style={{
                 background: "var(--color-accent)",
-                color: "var(--color-accent-contrast)",
+                color: "var(--color-on-accent)",
                 padding: "13px 24px",
                 borderRadius: "9px",
                 fontWeight: 600,
@@ -205,6 +244,7 @@ export default function LandingPage() {
           ))}
         </div>
       </section>
+      </div>
     </div>
   );
 }

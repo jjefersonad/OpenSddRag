@@ -1,82 +1,80 @@
-import type { FlowSummary } from "../../api/types";
+import type { ChangePhase } from "../../api/changes";
 
 /**
- * FlowPhaseStrip (REQ-014 multi-flow, design D6): renders a flow's declared
- * lifecycle phases as done/active/pending dots. Omitted entirely by the
- * caller when the flow's phase is null (no declared lifecycle) — graceful
- * degradation.
+ * FlowPhaseStrip (REQ-014, design D7): the prototype's horizontal compact
+ * phase strip — 13px done/active/pending dots, 30px connectors (green up to
+ * the active phase) and mono labels — rendered from the active change's
+ * server-derived phases. Omitted entirely by the caller when the change's
+ * flow declares no lifecycle (or the phases list is empty).
  */
 
-const STATE_STYLE = {
-  done: { dot: "var(--color-accent)", label: "#5b6469" },
-  active: { dot: "#34d399", label: "var(--color-text)" },
-  pending: { dot: "rgba(255,255,255,0.18)", label: "#5b6469" },
+const DOT_COLOR = {
+  done: "var(--color-accent)",
+  active: "var(--color-accent-hover)",
+  pending: "#2b3238",
 } as const;
 
-type State = keyof typeof STATE_STYLE;
+type Status = keyof typeof DOT_COLOR;
 
 export default function FlowPhaseStrip({
   flow,
-  summary,
-  lifecycle,
+  phases,
 }: {
   flow: string;
-  summary: FlowSummary;
-  lifecycle: { name: string; kinds: string[] }[];
+  phases: Pick<ChangePhase, "name" | "status">[];
 }) {
-  if (!lifecycle?.length) return null;
+  if (phases.length === 0) return null;
 
-  let activeIndex = lifecycle.findIndex((p) => p.name === summary.phase);
-  if (activeIndex === -1) activeIndex = -1; // phase null → everything pending except done
-
-  const last = lifecycle.length - 1;
   return (
     <div
       data-testid={`phase-strip-${flow}`}
       style={{
         display: "flex",
         alignItems: "center",
-        flexWrap: "wrap",
         background: "var(--color-inset)",
         border: "1px solid var(--color-border)",
-        borderRadius: "12px",
-        padding: "16px 14px",
-        gap: 0,
+        borderRadius: "11px",
+        padding: "14px 16px",
+        marginBottom: "22px",
+        overflowX: "auto",
       }}
     >
-      {lifecycle
-        .filter((p) => p.kinds.length > 0 || p.name === lifecycle[last].name)
-        .map((phase, visibleIndex) => {
-          // phases with kinds map to artifacts; the final Archive phase is done
-          // only when the whole flow is done (phase === last name).
-          let state: State = "pending";
-          if (phase.kinds.length === 0) {
-            state = summary.phase === lifecycle[last].name ? "active" : "pending";
-          } else {
-            const idx = lifecycle.indexOf(phase);
-            if (summary.phase && idx < activeIndex) state = "done";
-            else if (idx === activeIndex) state = "active";
-          }
-          const style = STATE_STYLE[state];
-          return (
-            <div key={phase.name} style={{ display: "flex", alignItems: "center" }}>
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, minWidth: 74 }}>
-                <div style={{ width: 9, height: 9, borderRadius: 99, background: style.dot, boxShadow: state === "active" ? "0 0 10px rgba(52,211,153,0.5)" : undefined }} />
-                <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: style.label, fontWeight: state === "active" ? 600 : 400 }}>
-                  {phase.name}
-                </span>
-              </div>
-              {visibleIndex < lifecycle.length - 1 && (
-                <div style={{ width: 30, height: 1.5, background: "var(--color-border)", margin: "0 2px 20px" }} />
-              )}
+      {phases.map((phase, i) => {
+        const status = phase.status as Status;
+        const dot = DOT_COLOR[status];
+        return (
+          <div key={phase.name} style={{ display: "flex", alignItems: "center" }}>
+            <div
+              data-testid={`strip-phase-${flow}-${phase.name}`}
+              data-state={status}
+              style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 7, minWidth: 74 }}
+            >
+              <div
+                style={{
+                  width: 13,
+                  height: 13,
+                  borderRadius: 99,
+                  background: dot,
+                  boxShadow: status === "active" ? "0 0 0 4px rgba(52,211,153,0.18)" : undefined,
+                }}
+              />
+              <span
+                style={{
+                  fontFamily: "var(--font-mono)",
+                  fontSize: "11.5px",
+                  color: status === "pending" ? "var(--color-text-tertiary)" : "#cdd3d7",
+                  fontWeight: status === "active" ? 600 : 500,
+                }}
+              >
+                {phase.name}
+              </span>
             </div>
-          );
-        })}
-      {summary.task_progress.total > 0 ? (
-        <span style={{ marginLeft: "auto", fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-text-tertiary)" }}>
-          {summary.task_progress.done} / {summary.task_progress.total} tasks
-        </span>
-      ) : null}
+            {i < phases.length - 1 ? (
+              <div style={{ width: 30, height: 1.5, margin: "0 1px 18px", background: status === "done" ? "#10b981" : "rgba(255,255,255,0.1)" }} />
+            ) : null}
+          </div>
+        );
+      })}
     </div>
   );
 }

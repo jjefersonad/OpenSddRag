@@ -1,26 +1,31 @@
 import { useEffect, useMemo, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { getProject } from "../../api/projects";
 import { listFlows } from "../../api/flows";
+import { getChanges, type ChangeSummary } from "../../api/changes";
 import type { FlowInfo, ProjectDetailData } from "../../api/types";
+import TabBar, { type TabBarTab } from "../../components/ui/TabBar";
 import ArtifactsTab from "../artifacts/ArtifactsTab";
 import TaskList from "../artifacts/TaskList";
 import HarnessTab from "../harness/HarnessTab";
 import OverviewTab from "./OverviewTab";
 import HierarchyTab from "../hierarchy/HierarchyTab";
-
-const HARNESS_TAB = { id: "harness", label: "Harness" } as const;
+import FlowPhaseStrip from "./FlowPhaseStrip";
+import ChangeReader from "../changes/ChangeReader";
 
 /**
- * Project detail shell (REQ-014/REQ-015 multi-flow, design D7/D8): tabs are
- * generated from the registered kinds of the project's flows (via
- * GET /api/v1/flows) + a fixed Harness tab; one tab per kind, rendered once
- * per flow that declares it (flow-scoped when the project mixes flows).
+ * Project detail shell (REQ-014/REQ-020, design D7): header (name, stage chip
+ * of the active change, `change: <name> · <language>` line), the horizontal
+ * FlowPhaseStrip of the active change's phases (omitted without a lifecycle),
+ * and the TabBar with order Overview → one per registered kind → Hierarchy →
+ * Harness. `getChanges` is fetched once here and shared with the Overview;
+ * the breadcrumb lives in the app shell only (REQ-014 single breadcrumb).
  */
 export default function ProjectDetail() {
-  const { slug } = useParams();
+  const { slug, change } = useParams();
   const [project, setProject] = useState<ProjectDetailData | null>(null);
   const [flows, setFlows] = useState<FlowInfo[]>([]);
+  const [changes, setChanges] = useState<ChangeSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState("overview");
 
@@ -28,6 +33,7 @@ export default function ProjectDetail() {
     let active = true;
     if (!slug) return;
     setProject(null);
+    setChanges(null);
     setError(null);
     getProject(slug)
       .then((data) => {
@@ -37,6 +43,7 @@ export default function ProjectDetail() {
         if (active) setError(err instanceof Error ? err.message : "failed to load project");
       });
     listFlows().then((f) => active && setFlows(f), () => active && setFlows([]));
+    getChanges(slug).then((c) => active && setChanges(c), () => active && setChanges([]));
     return () => {
       active = false;
     };
@@ -50,78 +57,93 @@ export default function ProjectDetail() {
   if (error) return <p role="alert">{error}</p>;
   if (!project) return <p>Loading…</p>;
 
+  const activeChange = changes?.[0] ?? null;
+  const stripPhases = activeChange ? headerStripPhases(activeChange, flows) : null;
+
+  const tabBarTabs: TabBarTab[] = tabs.map((entry) => ({
+    key: entry.key,
+    label: entry.label,
+    count: entry.type ? project.summary?.[entry.type] : undefined,
+  }));
+
   return (
     <section>
-      <nav data-testid="detail-breadcrumb" aria-label="Breadcrumb" style={{ marginBottom: "12px", color: "var(--color-text-tertiary)", fontSize: "13px" }}>
-        projects / {project.slug}
-      </nav>
-      <h1 style={{ margin: "0 0 16px", fontSize: "20px" }}>{project.name ?? project.slug}</h1>
-      <nav role="tablist" style={{ display: "flex", gap: "8px", marginBottom: "16px", flexWrap: "wrap" }}>
-        {tabs.map((entry) => {
-          const count = entry.type ? project.summary?.[entry.type] : undefined;
-          return (
-            <button
-              key={entry.key}
-              role="tab"
-              aria-selected={tab === entry.key}
-              onClick={() => setTab(entry.key)}
+      <header style={{ marginBottom: "20px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "6px" }}>
+          <h1 data-testid="app-h1" style={{ margin: 0, fontSize: "25px", fontWeight: 700, letterSpacing: "-0.02em" }}>
+            {project.name ?? project.slug}
+          </h1>
+          {activeChange ? (
+            <span
+              data-testid="detail-stage-chip"
               style={{
-                background: tab === entry.key ? "var(--color-card)" : "transparent",
-                border: "1px solid var(--color-border)",
-                borderRadius: "8px",
-                padding: "6px 12px",
-                color: "var(--color-text-primary)",
-                cursor: "pointer",
+                fontFamily: "var(--font-mono)",
+                fontSize: "11px",
+                padding: "4px 9px",
+                borderRadius: "6px",
+                color: "var(--color-accent-hover)",
+                background: "rgba(16,185,129,0.1)",
+                border: "1px solid rgba(16,185,129,0.25)",
               }}
             >
-              {entry.label}
-              {typeof count === "number" ? (
-                <span className="slug" style={{ marginLeft: "6px", color: "var(--color-accent)" }}>
-                  {count}
-                </span>
-              ) : null}
-            </button>
-          );
-        })}
-        <HARNESS_TAB_RENDER entry={HARNESS_TAB} active={tab === HARNESS_TAB.id} onClick={() => setTab(HARNESS_TAB.id)} />
-      </nav>
-      <div role="tabpanel">
-        {renderTabContent(project, slug ?? "", tab, flows, (nodeType: string) => {
-          const target = buildTabs(project, flows).find((t) => t.type === nodeType && nodeType !== "test");
-          setTab(target?.key ?? (nodeType === "test" ? "task" : "overview"));
-        })}
-      </div>
+              {activeChangePhaseName(activeChange)}
+            </span>
+          ) : null}
+        </div>
+        {activeChange ? (
+          <div
+            data-testid="header-change-line"
+            style={{ fontFamily: "var(--font-mono)", fontSize: "12.5px", color: "var(--color-text-tertiary)" }}
+          >
+            change: <span style={{ color: "var(--color-accent-hover)" }}>{activeChange.change}</span>
+            {project.language ? <> · {project.language}</> : null}
+          </div>
+        ) : null}
+      </header>
+
+      {activeChange && stripPhases ? <FlowPhaseStrip flow={activeChange.flow} phases={stripPhases} /> : null}
+
+      {change ? (
+        <>
+          <p style={{ margin: "0 0 18px" }}>
+            <Link
+              to={`/p/${slug}`}
+              data-testid="reader-back-overview"
+              style={{ fontFamily: "var(--font-mono)", fontSize: 12.5, color: "var(--color-accent-hover)", textDecoration: "none" }}
+            >
+              ← Overview
+            </Link>
+          </p>
+          <ChangeReader slug={slug ?? ""} change={change} />
+        </>
+      ) : (
+        <>
+          <TabBar tabs={tabBarTabs} active={tab} onSelect={setTab} />
+          <div role="tabpanel">
+            {renderTabContent(slug ?? "", tab, flows, changes, (nodeType: string) => {
+              const target = buildTabs(project, flows).find((t) => t.type === nodeType && nodeType !== "test");
+              setTab(target?.key ?? (nodeType === "test" ? "task" : "overview"));
+            })}
+          </div>
+        </>
+      )}
     </section>
   );
 }
 
-function HARNESS_TAB_RENDER({
-  entry,
-  active,
-  onClick,
-}: {
-  entry: { id: string; label: string };
-  active: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      key={entry.id}
-      role="tab"
-      aria-selected={active}
-      onClick={onClick}
-      style={{
-        background: active ? "var(--color-card)" : "transparent",
-        border: "1px solid var(--color-border)",
-        borderRadius: "8px",
-        padding: "6px 12px",
-        color: "var(--color-text-primary)",
-        cursor: "pointer",
-      }}
-    >
-      {entry.label}
-    </button>
-  );
+/** The change's phases for the header strip; null when its flow declares no
+ *  lifecycle (REQ-014 "Flow without lifecycle"). */
+function headerStripPhases(change: ChangeSummary, flows: FlowInfo[]) {
+  const flow = flows.find((f) => f.flow === change.flow);
+  if (!flow || !flow.lifecycle?.length || change.phases.length === 0) return null;
+  return change.phases;
+}
+
+/** The currently reached phase of the change — the one with status "active",
+ *  falling back to the last phase when every phase is done. */
+function activeChangePhaseName(change: ChangeSummary): string | null {
+  const active = change.phases.find((p) => p.status === "active");
+  return active?.name ?? change.phases.at(-1)?.name ?? null;
 }
 
 interface TabEntry {
@@ -132,10 +154,7 @@ interface TabEntry {
 }
 
 function buildTabs(project: ProjectDetailData | null, flows: FlowInfo[]): TabEntry[] {
-  const base: TabEntry[] = [
-    { key: "overview", label: "Overview" },
-    { key: "hierarchy", label: "Hierarchy" },
-  ];
+  const tabs: TabEntry[] = [{ key: "overview", label: "Overview" }];
   const seen = new Set<string>();
   for (const flow of flows) {
     for (const kindEntry of flow.kinds) {
@@ -143,13 +162,15 @@ function buildTabs(project: ProjectDetailData | null, flows: FlowInfo[]): TabEnt
       if (seen.has(kind)) continue;
       seen.add(kind);
       if (kind === "task") {
-        base.push({ key: "task", label: labelFor(kind), type: kind });
+        tabs.push({ key: "task", label: labelFor(kind), type: kind });
       } else {
-        base.push({ key: kind, label: labelFor(kind), type: kind });
+        tabs.push({ key: kind, label: labelFor(kind), type: kind });
       }
     }
   }
-  return base;
+  tabs.push({ key: "hierarchy", label: "Hierarchy" });
+  tabs.push({ key: "harness", label: "Harness" });
+  return tabs;
 }
 
 function labelFor(kind: string): string {
@@ -165,32 +186,24 @@ function labelFor(kind: string): string {
 }
 
 function renderTabContent(
-  project: ProjectDetailData,
   slug: string,
   tab: string,
   flows: FlowInfo[],
+  changes: ChangeSummary[] | null,
   onNavigate: (nodeType: string) => void,
 ) {
   switch (tab) {
     case "overview":
-      return <OverviewTab slug={slug} />;
+      return <OverviewTab slug={slug} changes={changes} />;
     case "hierarchy":
       return <HierarchyTab slug={slug} onNavigate={onNavigate} />;
     case "harness":
-      return <HarnessWithCount slug={slug} />;
+      return <HarnessTab slug={slug} />;
     default: {
-      const entry = tabsOf(flows).find((t) => t.key === tab);
+      const entry = buildTabs(null, flows).find((t) => t.key === tab);
       const type = entry?.type ?? tab;
       if (type === "task") return <TaskList slug={slug} />;
       return <ArtifactsTab slug={slug} type={type} flow={entry?.flow} />;
     }
   }
-}
-
-function tabsOf(flows: FlowInfo[]): TabEntry[] {
-  return buildTabs(null, flows);
-}
-
-function HarnessWithCount({ slug }: { slug: string }) {
-  return <HarnessTab slug={slug} />;
 }

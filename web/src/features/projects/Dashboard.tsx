@@ -16,61 +16,103 @@ export function relativeTime(iso?: string | null): string {
   return `${Math.floor(d / 30)}mo ago`;
 }
 
-/** One dashboard card (REQ-013): stage chip (when the flow declares a
- *  lifecycle — phase null omits it), description, language, relative
- *  updated time, aggregate task progress, mini phase pipeline. */
+const PIPELINE_BAR = {
+  done: "var(--color-accent)",
+  active: "var(--color-accent-hover)",
+  pending: "rgba(255,255,255,0.08)",
+} as const;
+
+/** One dashboard card (REQ-013): name, mono slug, stage chip (omitted when
+ *  the flow declares no lifecycle), description, mini phase pipeline (one bar
+ *  per phase, omitted when there are none), footer with language, relative
+ *  time and `done/total tasks`. The whole card links to the project. */
 export function ProjectCard({ project }: { project: Project }) {
   const done = project.task_progress?.done ?? 0;
   const total = project.task_progress?.total ?? 0;
+  const phases = project.phases ?? [];
   return (
-    <li
-      data-testid={`project-card-${project.slug}`}
-      style={{
-        background: "var(--color-card)",
-        border: "1px solid var(--color-border)",
-        borderRadius: "12px",
-        padding: "16px",
-        display: "flex",
-        flexDirection: "column",
-        gap: "8px",
-      }}
-    >
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <Link to={`/p/${project.slug}`} style={{ color: "var(--color-text-primary)", fontWeight: 600 }}>
-          {project.name}
-        </Link>
-        {project.phase ? (
-          <span
-            data-testid={`stage-chip-${project.slug}`}
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: "11px",
-              color: "#34d399",
-              background: "rgba(16,185,129,0.1)",
-              border: "1px solid rgba(16,185,129,0.25)",
-              borderRadius: "99px",
-              padding: "2px 8px",
-            }}
-          >
-            {project.phase}
-          </span>
+    <li data-testid={`project-card-${project.slug}`} style={{ display: "flex" }}>
+      <Link
+        to={`/p/${project.slug}`}
+        style={{
+          flex: 1,
+          display: "flex",
+          flexDirection: "column",
+          gap: "14px",
+          background: "var(--color-card)",
+          border: "1px solid var(--color-border)",
+          borderRadius: "12px",
+          padding: "20px",
+          color: "var(--color-text-primary)",
+          textDecoration: "none",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "12px" }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: "16px", fontWeight: 600 }}>{project.name}</div>
+            <div style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-tertiary)", marginTop: "3px" }}>
+              {project.slug}
+            </div>
+          </div>
+          {project.phase ? (
+            <span
+              data-testid={`stage-chip-${project.slug}`}
+              style={{
+                fontFamily: "var(--font-mono)",
+                fontSize: "11px",
+                color: "var(--color-accent-hover)",
+                background: "rgba(16,185,129,0.1)",
+                border: "1px solid rgba(16,185,129,0.25)",
+                borderRadius: "5px",
+                padding: "3px 9px",
+              }}
+            >
+              {project.phase}
+            </span>
+          ) : null}
+        </div>
+        {project.description ? (
+          <p style={{ margin: 0, color: "var(--color-text-secondary)", fontSize: "13.5px", lineHeight: 1.5 }}>
+            {project.description}
+          </p>
         ) : null}
-      </div>
-      {project.description ? (
-        <p style={{ margin: 0, color: "var(--color-text-secondary)", fontSize: "13px" }}>
-          {project.description}
-        </p>
-      ) : null}
-      <div style={{ display: "flex", gap: "10px", alignItems: "center", fontFamily: "var(--font-mono)", fontSize: "11.5px", color: "var(--color-text-tertiary)" }}>
-        {project.language ? <span>{project.language}</span> : null}
-        <span>{relativeTime(project.updated_at)}</span>
-        <span data-testid={`task-progress-${project.slug}`}>{done} / {total} tasks</span>
-      </div>
+        {phases.length > 0 ? (
+          <div data-testid={`pipeline-${project.slug}`} style={{ display: "flex", gap: "4px", marginTop: "auto" }}>
+            {phases.map((phase) => (
+              <div
+                key={phase.name}
+                data-state={phase.status}
+                title={phase.name}
+                style={{ flex: 1, height: "3px", borderRadius: "2px", background: PIPELINE_BAR[phase.status] }}
+              />
+            ))}
+          </div>
+        ) : null}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            fontFamily: "var(--font-mono)",
+            fontSize: "11.5px",
+            color: "var(--color-text-tertiary)",
+          }}
+        >
+          <span style={{ display: "flex", gap: "12px" }}>
+            {project.language ? <span>{project.language}</span> : null}
+            <span>{relativeTime(project.updated_at)}</span>
+          </span>
+          <span data-testid={`task-progress-${project.slug}`}>
+            {done}/{total} tasks
+          </span>
+        </div>
+      </Link>
     </li>
   );
 }
 
-/** Project dashboard — rich cards (REQ-013), empty state, create modal. */
+/** Project dashboard — header, 2-column grid of rich cards (REQ-013), empty
+ *  state and create modal. */
 export default function Dashboard() {
   const { projects, loading, error, reload } = useProjects();
   const [createOpen, setCreateOpen] = useState(false);
@@ -80,12 +122,17 @@ export default function Dashboard() {
       <header
         style={{
           display: "flex",
-          alignItems: "center",
+          alignItems: "flex-end",
           justifyContent: "space-between",
-          marginBottom: "16px",
+          marginBottom: "28px",
         }}
       >
-        <h1 style={{ margin: 0, fontSize: "20px" }}>Projects</h1>
+        <div>
+          <h1 style={{ margin: 0, fontSize: "28px", fontWeight: 700, letterSpacing: "-0.02em" }}>Projects</h1>
+          <p style={{ margin: "6px 0 0", color: "var(--color-text-secondary)", fontSize: "14.5px" }}>
+            {projects.length} registered · multi-tenant artifact memory
+          </p>
+        </div>
         <button
           type="button"
           onClick={() => setCreateOpen(true)}
@@ -94,12 +141,13 @@ export default function Dashboard() {
             color: "var(--color-on-accent)",
             border: "none",
             borderRadius: "8px",
-            padding: "8px 14px",
+            padding: "12px 20px",
             fontWeight: 600,
+            fontSize: "14px",
             cursor: "pointer",
           }}
         >
-          New project
+          + New project
         </button>
       </header>
 
@@ -112,15 +160,7 @@ export default function Dashboard() {
         </div>
       ) : null}
 
-      <ul
-        style={{
-          listStyle: "none",
-          padding: 0,
-          display: "grid",
-          gap: "12px",
-          gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))",
-        }}
-      >
+      <ul className="dashboard-grid">
         {projects.map((project) => (
           <ProjectCard key={project.slug} project={project} />
         ))}

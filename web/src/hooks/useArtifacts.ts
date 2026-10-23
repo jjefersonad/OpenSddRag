@@ -14,6 +14,7 @@ export function useArtifacts(
   slug: string | undefined,
   type?: string,
   flow?: string,
+  includeContent?: boolean,
 ): UseArtifactsResult {
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
   const [loading, setLoading] = useState(true);
@@ -27,7 +28,7 @@ export function useArtifacts(
     }
     setLoading(true);
     setError(null);
-    listArtifacts(slug, type, flow)
+    listArtifacts(slug, type, flow, includeContent)
       .then((data) => {
         if (active) setArtifacts(data);
       })
@@ -42,7 +43,7 @@ export function useArtifacts(
     return () => {
       active = false;
     };
-  }, [slug, type, flow]);
+  }, [slug, type, flow, includeContent]);
 
   return { artifacts, loading, error };
 }

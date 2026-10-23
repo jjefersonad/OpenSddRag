@@ -117,6 +117,27 @@ async def list_artifacts(
             return [_row_to_artifact(r) for r in rows]
 
 
+async def list_artifact_stubs(project_ids: list[UUID]) -> list[dict]:
+    """Lightweight artifact rows for several projects in ONE query.
+
+    Only the fields derivations need (no `content`, no embedding), so a
+    project list can summarize every project without N+1 queries or loading
+    artifact bodies (design D4).
+    """
+    if not project_ids:
+        return []
+    async with get_conn() as conn:
+        async with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
+            await cur.execute(
+                """
+                SELECT project_id, type, status, flow, metadata, updated_at
+                FROM artifacts WHERE project_id = ANY(%s::uuid[])
+                """,
+                ([str(pid) for pid in project_ids],),
+            )
+            return list(await cur.fetchall())
+
+
 async def update_artifact(
     project_id: UUID,
     name: str,

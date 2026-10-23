@@ -30,7 +30,11 @@ class ManagementServiceProtocol(Protocol):
     async def get_project(self, slug: str) -> dict[str, Any]: ...
 
     async def list_artifacts(
-        self, slug: str, type_filter: str | None = None, flow_filter: str | None = None
+        self,
+        slug: str,
+        type_filter: str | None = None,
+        flow_filter: str | None = None,
+        include_content: bool = False,
     ) -> list[dict[str, Any]]: ...
 
     async def get_artifact(self, artifact_id: str) -> dict[str, Any]: ...
@@ -46,6 +50,8 @@ class ManagementServiceProtocol(Protocol):
     async def get_tree(self, slug: str) -> dict[str, Any]: ...
 
     async def list_changes(self, slug: str) -> list[dict[str, Any]]: ...
+
+    async def get_change_bundle(self, slug: str, change: str) -> dict[str, Any]: ...
 
     async def list_rules(
         self, slug: str, enabled_all: bool = False

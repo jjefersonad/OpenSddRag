@@ -125,6 +125,8 @@ The OpenSddRag MCP server has the real data. Keep the UI and replace the mock da
    - `GET  /projects` → list of projects
    - `POST /projects` → register a project `{name, slug, description, language}`
    - `GET  /projects/:slug/artifacts?type=<kind>&flow=<slug>` (kinds are free text — SDD examples: `proposal|spec|design|task|test`)
+   - `GET  /projects/:slug/changes` — live-change list (`started_at`, `updated_at`, phases, `task_progress`; no artifact `content`)
+   - `GET  /projects/:slug/changes/:change` — one change's `{proposal, design, specs, tasks, task_count}` with bodies (management Bearer). Not MCP `read_change_bundle` (that tool still omits task content).
    - `PATCH /projects/:slug/tasks/:id` → `{done}`
    - `GET  /projects/:slug/rules`, `PATCH /projects/:slug/rules/:id` → `{enabled}`
    - `GET  /projects/:slug/traces`

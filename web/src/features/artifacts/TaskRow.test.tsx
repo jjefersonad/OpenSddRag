@@ -26,6 +26,24 @@ afterEach(() => {
 // ── Unit 2: TaskCheckbox optimistic flow (web-dashboard-ui REQ-004) ──────────
 
 describe("TaskRow", () => {
+  it("shows Goal as the title and marks archived tasks done", () => {
+    render(
+      <TaskRow
+        slug="demo"
+        task={{
+          id: "t-arch",
+          name: "web-ui-prototype-fidelity-task-frontend-1",
+          type: "task",
+          status: "archived",
+          content: "## Goal\nLoad IBM Plex fonts\n\n## Steps\n- Link the font.",
+          metadata: { change_name: "web-ui-prototype-fidelity" },
+        }}
+      />,
+    );
+    expect(screen.getAllByText("Load IBM Plex fonts").length).toBeGreaterThan(0);
+    expect(screen.getByRole("checkbox")).toBeChecked();
+  });
+
   it("flips done immediately, PATCHes {done:true}, reverts + error on failure", async () => {
     let rejectPatch: ((reason?: unknown) => void) | undefined;
     const fetchMock = vi.fn(

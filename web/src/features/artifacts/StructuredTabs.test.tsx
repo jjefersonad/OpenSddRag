@@ -129,9 +129,12 @@ function renderDetail() {
 // REQ-015 — structured renderers
 
 describe("Structured artifact tabs (REQ-015)", () => {
-  it("Specs tab renders SHALL text with expandable WHEN/THEN", async () => {
+  it("Specs tab renders collapsed cards that expand to SHALL text with WHEN/THEN", async () => {
     renderDetail();
     fireEvent.click(await screen.findByRole("tab", { name: /Specs\s*1/i }));
+    const header = await screen.findByRole("button", { name: /alpha-spec/i });
+    expect(header).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(header);
     const card = await screen.findByText("The system SHALL do the thing.");
     expect(card).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Happy path/i }));
@@ -202,6 +205,29 @@ describe("artifact parsers", () => {
     expect(reqs[0].shall).toContain("SHALL do the thing");
     expect(reqs[0].scenarios).toHaveLength(1);
     expect(reqs[0].scenarios[0]).toHaveProperty("when");
+  });
+
+  // REQ-015 regression: the scenario cursor must reset when a new
+  // `### Requirement:` block starts, or a later requirement's SHALL text
+  // is swallowed by the previous block's scenario context.
+  it("keeps the SHALL text of a requirement that follows a scenariod one", () => {
+    const content = [
+      "# Spec",
+      "",
+      "### Requirement: REQ-001 First",
+      "The system SHALL do the first thing.",
+      "",
+      "#### Scenario: First",
+      "- **WHEN** invoked",
+      "- **THEN** it happens",
+      "",
+      "### Requirement: REQ-002 Second",
+      "The system SHALL do the second thing.",
+    ].join("\n");
+    const reqs = parseRequirements(content);
+    expect(reqs).toHaveLength(2);
+    expect(reqs[0].scenarios).toHaveLength(1);
+    expect(reqs[1].shall).toContain("SHALL do the second thing");
   });
 
   it("parseDesignSections extracts decisions/risks", () => {

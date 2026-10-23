@@ -59,7 +59,7 @@ describe("Dashboard cards (REQ-013)", () => {
     expect(screen.getByText("Design")).toBeInTheDocument(); // stage chip
     expect(screen.getByText("A demo capability")).toBeInTheDocument();
     expect(screen.getByText("Python")).toBeInTheDocument();
-    expect(screen.getByText(/3 \/ 8 tasks/i)).toBeInTheDocument();
+    expect(screen.getByText(/3\/8 tasks/i)).toBeInTheDocument();
     expect(screen.getByText(/3h ago|3 hours ago/i)).toBeInTheDocument();
   });
 
@@ -73,7 +73,7 @@ describe("Dashboard cards (REQ-013)", () => {
     await screen.findByTestId("project-card-bare-proj");
     expect(screen.queryByText("None")).not.toBeInTheDocument();
     expect(screen.queryByTestId("stage-chip-bare-proj")).not.toBeInTheDocument();
-    expect(screen.getByText(/0 \/ 2 tasks/i)).toBeInTheDocument();
+    expect(screen.getByText(/0\/2 tasks/i)).toBeInTheDocument();
   });
 
   it("renders the empty state for an empty registry", async () => {
@@ -84,5 +84,81 @@ describe("Dashboard cards (REQ-013)", () => {
       </MemoryRouter>,
     );
     expect(await screen.findByTestId("dashboard-empty")).toBeInTheDocument();
+  });
+});
+
+// REQ-013 — prototype-faithful grid, header and card (web-ui-prototype-fidelity)
+
+const PHASE_NAMES = ["Propose", "Spec", "Design", "Tasks", "Apply", "Verify", "Sync", "Archive"];
+
+function phasesAt(activeIndex: number) {
+  return PHASE_NAMES.map((name, i) => ({
+    name,
+    status: i < activeIndex ? "done" : i === activeIndex ? "active" : "pending",
+  })) as NonNullable<Project["phases"]>;
+}
+
+const pipelineProject: Project = {
+  id: "9",
+  name: "Payments Service",
+  slug: "payments-service",
+  description: "Stripe-backed billing & subscription engine.",
+  language: "TypeScript",
+  phase: "Tasks",
+  phases: phasesAt(3),
+  task_progress: { done: 4, total: 8 },
+  updated_at: new Date(Date.now() - 12 * 60_000).toISOString(),
+};
+
+function renderDashboard() {
+  return render(
+    <MemoryRouter>
+      <Dashboard />
+    </MemoryRouter>,
+  );
+}
+
+describe("Dashboard prototype fidelity (REQ-013)", () => {
+  it("renders name, slug, stage chip, pipeline bars and 4/8 tasks", async () => {
+    mockDashboardFetch([pipelineProject]);
+    renderDashboard();
+    const card = await screen.findByTestId("project-card-payments-service");
+    expect(card).toHaveTextContent("Payments Service");
+    expect(card).toHaveTextContent("payments-service");
+    expect(screen.getByTestId("stage-chip-payments-service")).toHaveTextContent("Tasks");
+    const bars = screen.getByTestId("pipeline-payments-service").children;
+    expect(bars).toHaveLength(8);
+    expect(Array.from(bars).map((b) => b.getAttribute("data-state"))).toEqual([
+      "done", "done", "done", "active", "pending", "pending", "pending", "pending",
+    ]);
+    expect(screen.getByTestId("task-progress-payments-service")).toHaveTextContent("4/8 tasks");
+  });
+
+  it("renders the header subtitle, the grid class and the New project button", async () => {
+    const four = ["a", "b", "c", "d"].map((slug, i) => ({ id: String(i), name: slug, slug }) as Project);
+    mockDashboardFetch(four);
+    renderDashboard();
+    expect(await screen.findByText("4 registered · multi-tenant artifact memory")).toBeInTheDocument();
+    expect(screen.getByRole("list")).toHaveClass("dashboard-grid");
+    expect(screen.getByRole("button", { name: "+ New project" })).toBeInTheDocument();
+  });
+
+  it("omits chip and pipeline when the project has no stage, without error", async () => {
+    mockDashboardFetch([{ ...noLifecycleProject, phases: [] }]);
+    renderDashboard();
+    await screen.findByTestId("project-card-bare-proj");
+    expect(screen.queryByTestId("stage-chip-bare-proj")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("pipeline-bare-proj")).not.toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("tolerates an older API payload without phase/phases/task_progress", async () => {
+    mockDashboardFetch([{ id: "7", name: "Legacy", slug: "legacy", language: "Go" } as Project]);
+    renderDashboard();
+    const card = await screen.findByTestId("project-card-legacy");
+    expect(card).toHaveTextContent("Legacy");
+    expect(card).toHaveTextContent("legacy");
+    expect(card).toHaveTextContent("Go");
+    expect(screen.getByTestId("task-progress-legacy")).toHaveTextContent("0/0 tasks");
   });
 });

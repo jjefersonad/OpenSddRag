@@ -13,8 +13,9 @@ import ProtectedRoute from "./components/ProtectedRoute";
  *   /login      public
  *   /docs       public
  *   /projects   dashboard (protected)
- *   /p/:slug    project detail shell (protected)
- *   *           → /
+ *   /p/:slug           project detail shell (protected)
+ *   /p/:slug/c/:change change reader inside the same shell (web-change-reader D3)
+ *   *                  → /
  */
 export const routes: RouteObject[] = [
   { path: "/", element: <LandingPage /> },
@@ -36,7 +37,10 @@ export const routes: RouteObject[] = [
         <App />
       </ProtectedRoute>
     ),
-    children: [{ index: true, element: <ProjectDetail /> }],
+    children: [
+      { index: true, element: <ProjectDetail /> },
+      { path: "c/:change", element: <ProjectDetail /> },
+    ],
   },
   { path: "*", element: <Navigate to="/" replace /> },
 ];

@@ -1,4 +1,5 @@
 import type { Artifact } from "../../api/types";
+import MarkdownBody from "../../components/MarkdownBody";
 import { parseSections, parseDesignSections } from "./parsers";
 
 /** Structured proposal renderer (REQ-015): Problem / What changes /
@@ -11,6 +12,15 @@ export function ProposalView({ artifact }: { artifact: Artifact }) {
     "Out of Scope",
     "Impact",
   ]);
+  const parsed =
+    sections["Why"] ||
+    sections["What Changes"] ||
+    capabilitiesBody(content) ||
+    sections["Impact"] ||
+    sections["Out of Scope"];
+  if (!parsed && content.trim()) {
+    return <MarkdownBody>{content}</MarkdownBody>;
+  }
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
       <Section title="Problem (Why)" body={sections["Why"]} />
@@ -32,9 +42,7 @@ function Section({ title, body }: { title: string; body: string }) {
   return (
     <div>
       <div className="label" style={{ marginBottom: "6px" }}>{title}</div>
-      <pre style={{ margin: 0, whiteSpace: "pre-wrap", color: "var(--color-text-secondary)", fontSize: "13px", fontFamily: "inherit" }}>
-        {body}
-      </pre>
+      <MarkdownBody>{body}</MarkdownBody>
     </div>
   );
 }
@@ -42,7 +50,11 @@ function Section({ title, body }: { title: string; body: string }) {
 /** Structured design renderer (REQ-015): Technical decisions / Trade-offs /
  *  Risks. */
 export function DesignView({ artifact }: { artifact: Artifact }) {
-  const parsed = parseDesignSections(artifact.content ?? "");
+  const content = artifact.content ?? "";
+  const parsed = parseDesignSections(content);
+  if (parsed.decisions.length === 0 && parsed.risks.length === 0 && content.trim()) {
+    return <MarkdownBody>{content}</MarkdownBody>;
+  }
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
       <div>
