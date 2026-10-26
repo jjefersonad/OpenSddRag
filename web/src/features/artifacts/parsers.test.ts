@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { displayTitle } from "./parsers";
+import { briefTitle, displayTitle } from "./parsers";
 
 describe("displayTitle (change-reader REQ-001)", () => {
   it("uses the first Why paragraph of a proposal, not the slug", () => {
@@ -41,5 +41,16 @@ describe("displayTitle (change-reader REQ-001)", () => {
     });
     expect(title).toBe("domain-1");
     expect(title.length).toBeGreaterThan(0);
+  });
+
+  it("briefTitle keeps a short sentence and truncates a long Why", () => {
+    expect(briefTitle("A human cannot read what a change did")).toBe(
+      "A human cannot read what a change did",
+    );
+    const long =
+      "Em produção, quando o usuário pede uma tarefa mais longa ao agente no chat web, o navegador registra um erro de rede e a tela mostra falha.";
+    const brief = briefTitle(long, 90);
+    expect(brief.length).toBeLessThanOrEqual(90);
+    expect(brief.endsWith("…")).toBe(true);
   });
 });

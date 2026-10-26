@@ -101,10 +101,17 @@ def artifact_routes(service: ManagementServiceProtocol) -> list[Route]:
                 dto.content,
                 dto.metadata,
                 dto.status,
+                dto.name,
             )
         except Exception as exc:  # noqa: BLE001
             return response_for_error(exc)
         return JSONResponse(updated)
+
+    async def delete_artifact(request: Request) -> JSONResponse:
+        try:
+            return JSONResponse(await service.delete_artifact(request.path_params["artifact_id"]))
+        except Exception as exc:  # noqa: BLE001
+            return response_for_error(exc)
 
     async def link_artifact(request: Request) -> JSONResponse:
         try:
@@ -146,6 +153,11 @@ def artifact_routes(service: ManagementServiceProtocol) -> list[Route]:
             "/api/v1/artifacts/{artifact_id}",
             require_management_token(update_artifact),
             methods=["PATCH"],
+        ),
+        Route(
+            "/api/v1/artifacts/{artifact_id}",
+            require_management_token(delete_artifact),
+            methods=["DELETE"],
         ),
         Route(
             "/api/v1/artifacts/{artifact_id}/validation",

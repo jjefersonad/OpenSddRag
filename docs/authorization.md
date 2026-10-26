@@ -11,7 +11,13 @@ When running OpenSddRag in SSE/HTTP mode for online access, API key authorizatio
 
 ## Manage keys
 
-All key management is done via the `opensddrag key` CLI from inside `mcp-server/`:
+The web dashboard (**API keys** in the sidebar, `/keys`) lists, creates, and
+revokes keys through the management REST API (`GET/POST /api/v1/keys`,
+`POST /api/v1/keys/:id/revoke`, auth: `Authorization: Bearer <MANAGEMENT_API_TOKEN>`).
+List responses never include the plaintext or hash; create returns `key` once.
+
+The same operations are available via the `opensddrag-server key` CLI from
+inside `mcp-server/`:
 
 ```bash
 # Create a global key

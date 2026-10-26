@@ -143,6 +143,7 @@ async def update_artifact(
     name: str,
     data: ArtifactUpdate,
     embedding: list[float] | None = None,
+    new_name: str | None = None,
 ) -> Artifact | None:
     sets = ["updated_at = NOW()"]
     params: list = []
@@ -158,6 +159,9 @@ async def update_artifact(
     if embedding is not None:
         sets.append("embedding = %s::vector")
         params.append(str(embedding))
+    if new_name is not None:
+        sets.append("name = %s")
+        params.append(new_name)
     params.extend([str(project_id), name])
     async with get_conn() as conn:
         async with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
@@ -171,6 +175,13 @@ async def update_artifact(
             )
             row = await cur.fetchone()
             return _row_to_artifact(row) if row else None
+
+
+async def delete_artifact(artifact_id: UUID) -> bool:
+    async with get_conn() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute("DELETE FROM artifacts WHERE id = %s", (str(artifact_id),))
+            return cur.rowcount > 0
 
 
 async def search_semantic(

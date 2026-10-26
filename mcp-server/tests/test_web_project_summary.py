@@ -148,12 +148,12 @@ async def test_list_changes_excludes_historical_with_active_main_spec(project) -
     await _mk(project, "hist-proposal", "proposal", "archived", change_name="hist")
     await _mk(project, "hist-task", "task", "archived", change_name="hist")
     await _mk(project, "hist-main-spec", "spec", "active", change_name="hist", is_delta=False)
-    assert await _svc().list_changes(project.slug) == []
+    assert (await _svc().list_changes(project.slug))["items"] == []
 
     await _mk(project, "live-proposal", "proposal", "draft", change_name="live")
     for i in range(5):
         await _mk(project, f"live-task-{i}", "task", "archived" if i < 4 else "draft", change_name="live")
-    changes = await _svc().list_changes(project.slug)
+    changes = (await _svc().list_changes(project.slug))["items"]
     assert [c["change"] for c in changes] == ["live"]
     assert changes[0]["task_progress"] == {"done": 4, "total": 5}
     assert changes[0]["started_at"]

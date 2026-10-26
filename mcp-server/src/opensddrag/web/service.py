@@ -27,6 +27,17 @@ class ManagementServiceProtocol(Protocol):
         self, name: str, slug: str, description: str = "", language: str = ""
     ) -> dict[str, Any]: ...
 
+    async def update_project(
+        self,
+        slug: str,
+        name: str | None = None,
+        description: str | None = None,
+        language: str | None = None,
+        new_slug: str | None = None,
+    ) -> dict[str, Any]: ...
+
+    async def delete_project(self, slug: str) -> dict[str, Any]: ...
+
     async def get_project(self, slug: str) -> dict[str, Any]: ...
 
     async def list_artifacts(
@@ -49,7 +60,9 @@ class ManagementServiceProtocol(Protocol):
 
     async def get_tree(self, slug: str) -> dict[str, Any]: ...
 
-    async def list_changes(self, slug: str) -> list[dict[str, Any]]: ...
+    async def list_changes(
+        self, slug: str, page: int = 1, page_size: int = 8
+    ) -> dict[str, Any]: ...
 
     async def get_change_bundle(self, slug: str, change: str) -> dict[str, Any]: ...
 
@@ -99,7 +112,10 @@ class ManagementServiceProtocol(Protocol):
         content: str | None = None,
         metadata: dict[str, Any] | None = None,
         status: str | None = None,
+        name: str | None = None,
     ) -> dict[str, Any]: ...
+
+    async def delete_artifact(self, artifact_id: str) -> dict[str, Any]: ...
 
     async def link_artifact(
         self,
@@ -108,6 +124,22 @@ class ManagementServiceProtocol(Protocol):
         target_name: str | None = None,
         target_id: str | None = None,
     ) -> dict[str, Any]: ...
+
+    async def list_api_keys(
+        self,
+        project_slug: str | None = None,
+        include_revoked: bool = False,
+        scope: str | None = None,
+    ) -> list[dict[str, Any]]: ...
+
+    async def create_api_key(
+        self,
+        description: str = "",
+        project_slug: str | None = None,
+        expires_at: str | None = None,
+    ) -> dict[str, Any]: ...
+
+    async def revoke_api_key(self, key_id: str) -> dict[str, Any]: ...
 
 
 __all__ = ["ManagementServiceProtocol"]

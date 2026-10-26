@@ -20,6 +20,7 @@ export interface ChangeSummary {
 }
 
 export interface ChangeTask {
+  id?: string;
   name: string;
   status: string;
   content: string;
@@ -36,8 +37,19 @@ export interface ChangeBundle {
   task_count: number;
 }
 
-export function getChanges(slug: string): Promise<ChangeSummary[]> {
-  return apiRequest<ChangeSummary[]>(`/projects/${slug}/changes`);
+/** Page size requested from the API. The server slices; the client does not. */
+export const CHANGES_PAGE_SIZE = 8;
+
+export interface ChangesPage {
+  items: ChangeSummary[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export function getChanges(slug: string, page = 1, pageSize = CHANGES_PAGE_SIZE): Promise<ChangesPage> {
+  const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
+  return apiRequest<ChangesPage>(`/projects/${slug}/changes?${params}`);
 }
 
 export function getChangeBundle(slug: string, change: string): Promise<ChangeBundle> {

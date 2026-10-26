@@ -18,6 +18,7 @@ import pytest
 from starlette.applications import Starlette
 from starlette.testclient import TestClient
 
+from opensddrag.core.domain.change_pages import paginate
 from opensddrag.core.domain.errors import (
     ResourceConflictError,
     ResourceNotFoundError,
@@ -56,6 +57,7 @@ class StubService:
         self.search_results = search_results or []
         self.bundles: dict[tuple[str, str], dict] = {}
         self.changes_by_slug: dict[str, list] = {}
+        self.api_keys: list[dict] = []
 
     async def list_projects(self):
         return list(self.projects)
@@ -115,10 +117,20 @@ class StubService:
             raise ResourceNotFoundError(f"change {change!r} not found in project {slug!r}")
         return self.bundles[(slug, change)]
 
-    async def list_changes(self, slug):
+    async def list_changes(self, slug, page: int = 1, page_size: int = 8):
         if slug not in self.changes_by_slug:
             raise ResourceNotFoundError(f"project {slug!r} not found")
-        return list(self.changes_by_slug[slug])
+        return paginate(list(self.changes_by_slug[slug]), page, page_size)
+
+    async def list_api_keys(self, project_slug=None, include_revoked=False, scope=None):
+        items = list(self.api_keys)
+        if project_slug:
+            items = [k for k in items if k.get("project_slug") == project_slug]
+        if scope == "global":
+            items = [k for k in items if not k.get("project_slug")]
+        if not include_revoked:
+            items = [k for k in items if k.get("status") != "revoked"]
+        return items
 
 
 @pytest.fixture(autouse=True)
@@ -593,10 +605,75 @@ def test_list_changes_http_shape_unchanged() -> None:
             "phases": [{"name": "Propose", "status": "active", "desc": "d"}],
         }
     ]
-    resp = _client(svc).get("/api/v1/projects/demo/changes", headers=_auth())
+    resp = _client(svc).get("/api/v1/projects/demo/changes?page=1&page_size=8", headers=_auth())
     assert resp.status_code == 200
     body = resp.json()
-    assert isinstance(body, list)
-    assert body[0]["change"] == "chg-a"
-    assert "content" not in body[0]
-    assert {"change", "flow", "updated_at", "task_progress", "phases"} <= set(body[0])
+    assert body["total"] == 1
+    assert body["page"] == 1
+    assert body["items"][0]["change"] == "chg-a"
+    assert "content" not in body["items"][0]
+    assert {"change", "flow", "updated_at", "task_progress", "phases"} <= set(body["items"][0])
+
+    bad = _client(svc).get("/api/v1/projects/demo/changes?page=0", headers=_auth())
+    assert bad.status_code == 422
+    assert bad.json()["error"]["code"] == "VALIDATION_ERROR"
+
+
+def test_list_changes_http_pages_newest_first() -> None:
+    svc = StubService()
+    svc.changes_by_slug["demo"] = [
+        {"change": "older", "flow": "sdd", "updated_at": "2026-10-01T00:00:00Z", "task_progress": {"done": 0, "total": 0}, "phases": []},
+        {"change": "newest", "flow": "sdd", "updated_at": "2026-10-08T00:00:00Z", "task_progress": {"done": 0, "total": 0}, "phases": []},
+    ]
+    client = _client(svc)
+    first = client.get("/api/v1/projects/demo/changes?page=1&page_size=1", headers=_auth())
+    assert first.status_code == 200
+    assert first.json()["total"] == 2
+    assert first.json()["items"][0]["change"] == "newest"
+    second = client.get("/api/v1/projects/demo/changes?page=2&page_size=1", headers=_auth())
+    assert second.json()["items"][0]["change"] == "older"
+
+
+def test_list_api_keys_filters_and_hides_secrets() -> None:
+    svc = StubService()
+    svc.api_keys = [
+        {
+            "id": "1",
+            "prefix": "aaa11111",
+            "description": "global",
+            "project_slug": None,
+            "status": "active",
+        },
+        {
+            "id": "2",
+            "prefix": "bbb22222",
+            "description": "jeff",
+            "project_slug": "jeff-ai",
+            "status": "active",
+        },
+        {
+            "id": "3",
+            "prefix": "ccc33333",
+            "description": "old",
+            "project_slug": None,
+            "status": "revoked",
+        },
+    ]
+    client = _client(svc)
+
+    active = client.get("/api/v1/keys", headers=_auth())
+    assert active.status_code == 200
+    assert [k["id"] for k in active.json()] == ["1", "2"]
+    assert all("key" not in k and "key_hash" not in k for k in active.json())
+
+    scoped = client.get("/api/v1/keys?project=jeff-ai", headers=_auth())
+    assert [k["id"] for k in scoped.json()] == ["2"]
+
+    global_only = client.get("/api/v1/keys?scope=global", headers=_auth())
+    assert [k["id"] for k in global_only.json()] == ["1"]
+
+    with_revoked = client.get("/api/v1/keys?include_revoked=true", headers=_auth())
+    assert [k["id"] for k in with_revoked.json()] == ["1", "2", "3"]
+
+    unauth = client.get("/api/v1/keys")
+    assert unauth.status_code == 401

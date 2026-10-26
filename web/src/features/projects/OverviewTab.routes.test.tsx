@@ -58,10 +58,18 @@ function isBundleUrl(url: string): boolean {
   return /\/changes\/[^/?]+/.test(url);
 }
 
+function changesPage(url: string, changes: ChangeSummary[]) {
+  const params = new URLSearchParams(url.includes("?") ? url.slice(url.indexOf("?")) : "");
+  const page = Number(params.get("page") || "1");
+  const pageSize = Number(params.get("page_size") || "8");
+  const start = (page - 1) * pageSize;
+  return { items: changes.slice(start, start + pageSize), total: changes.length, page, page_size: pageSize };
+}
+
 function makeHandler(changes: ChangeSummary[], session: SessionSummary = { active_artifacts: [], note: null }, traces: unknown[] = []): UrlHandler {
   return (url) => {
     if (isBundleUrl(url)) return jsonResponse(404, { error: { code: "NOT_FOUND", message: "missing" } });
-    if (url.includes("/changes")) return jsonResponse(200, changes);
+    if (url.includes("/changes")) return jsonResponse(200, changesPage(url, changes));
     if (url.endsWith("/projects/demo")) return jsonResponse(200, { id: "1", name: "Demo", slug: "demo", summary: {}, flows: [] });
     if (url.includes("/session")) return jsonResponse(200, session);
     if (url.includes("/traces")) return jsonResponse(200, traces);
@@ -89,7 +97,9 @@ describe("Overview changes-in-progress (REQ-014 delta)", () => {
     const card1 = await screen.findByTestId("change-card-chg-one");
     expect(card1).toBeInTheDocument();
     expect(within(card1).getByTestId("change-stage-chg-one")).toHaveTextContent("Tasks");
+    expect(within(card1).getByTestId("change-progress-chg-one")).toHaveTextContent("0/1");
     expect(within(card1).getByText("08 Oct 2026")).toBeInTheDocument();
+    expect(within(card1).getByText("Chg one")).toBeInTheDocument();
     expect(screen.queryByTestId("phase-chg-one-Tasks")).not.toBeInTheDocument();
     const card2 = await screen.findByTestId("change-card-chg-two");
     expect(within(card2).getByTestId("change-stage-chg-two")).toHaveTextContent("Propose");
@@ -122,7 +132,7 @@ describe("OverviewTab two-column layout (overview-grid unit spec)", () => {
 
     const [left, right] = expectGridColumns();
 
-    expect(within(left).getByText("Changes")).toBeInTheDocument();
+    expect(within(left).getByText("Live changes")).toBeInTheDocument();
     expect(within(left).getByTestId("change-card-chg-one")).toBeInTheDocument();
 
     const context = within(right).getByTestId("working-context-panel");

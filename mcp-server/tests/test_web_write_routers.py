@@ -45,6 +45,7 @@ class StubService:
         self.tasks = tasks or {}
         self.rules = rules or {}
         self.artifacts = artifacts or {}
+        self.projects: dict = {}
         self.links: list[dict] = []
 
     # ── tasks ──
@@ -102,7 +103,7 @@ class StubService:
         self.artifacts[art["id"]] = art
         return art
 
-    async def update_artifact(self, artifact_id, content, metadata, status):
+    async def update_artifact(self, artifact_id, content, metadata, status, name=None):
         art = self.artifacts.get(artifact_id)
         if art is None:
             raise ResourceNotFoundError(f"artifact {artifact_id!r} not found")
@@ -112,7 +113,39 @@ class StubService:
             art["metadata"] = {**art["metadata"], **metadata}
         if status is not None:
             art["status"] = status
+        if name is not None:
+            art["name"] = name
         return art
+
+    async def delete_artifact(self, artifact_id):
+        art = self.artifacts.pop(artifact_id, None)
+        if art is None:
+            raise ResourceNotFoundError(f"artifact {artifact_id!r} not found")
+        return {"deleted": True, "id": artifact_id}
+
+    async def update_project(self, slug, name=None, description=None, language=None, new_slug=None):
+        project = self.projects.get(slug) if hasattr(self, "projects") else None
+        if project is None:
+            raise ResourceNotFoundError(f"project {slug!r} not found")
+        if new_slug and new_slug != slug and new_slug in self.projects:
+            raise ResourceConflictError(f"project slug {new_slug!r} already exists")
+        if name is not None:
+            project["name"] = name
+        if description is not None:
+            project["description"] = description
+        if language is not None:
+            project["language"] = language
+        if new_slug and new_slug != slug:
+            self.projects.pop(slug)
+            project["slug"] = new_slug
+            self.projects[new_slug] = project
+        return project
+
+    async def delete_project(self, slug):
+        project = self.projects.pop(slug, None) if hasattr(self, "projects") else None
+        if project is None:
+            raise ResourceNotFoundError(f"project {slug!r} not found")
+        return {"deleted": True, "slug": slug}
 
     async def link_artifact(self, artifact_id, relationship_type, target_name, target_id):
         if relationship_type not in REL_VALID:
@@ -126,6 +159,37 @@ class StubService:
         }
         self.links.append(link)
         return link
+
+    async def list_api_keys(self, project_slug=None, include_revoked=False, scope=None):
+        return []
+
+    async def create_api_key(self, description="", project_slug=None, expires_at=None):
+        if project_slug == "missing":
+            raise ResourceNotFoundError(f"project {project_slug!r} not found")
+        if expires_at == "not-a-date":
+            raise ManagementValidationError("expires_at must be an ISO date or datetime")
+        key = {
+            "id": f"k-{len(getattr(self, 'api_keys', [])) + 1}",
+            "prefix": "aabbccdd",
+            "description": description,
+            "project_slug": project_slug,
+            "created_at": "2026-10-25T00:00:00+00:00",
+            "expires_at": expires_at,
+            "revoked_at": None,
+            "status": "active",
+            "key": "plain-text-once",
+        }
+        self.api_keys = getattr(self, "api_keys", [])
+        self.api_keys.append({k: v for k, v in key.items() if k != "key"})
+        return key
+
+    async def revoke_api_key(self, key_id):
+        for item in getattr(self, "api_keys", []):
+            if item["id"] == key_id:
+                item["status"] = "revoked"
+                item["revoked_at"] = "2026-10-25T12:00:00+00:00"
+                return item
+        raise ResourceNotFoundError(f"api key {key_id!r} not found")
 
 
 @pytest.fixture(autouse=True)
@@ -290,3 +354,85 @@ def test_update_artifact_status_and_metadata_preserved() -> None:
     assert resp.json()["status"] == "active"
     # content untouched when not provided
     assert resp.json()["content"] == "old"
+
+
+def test_project_update_and_delete_and_artifact_delete() -> None:
+    svc = StubService()
+    svc.projects = {"demo": {"id": "1", "name": "Demo", "slug": "demo", "description": ""}}
+    svc.artifacts = {"a-1": {"id": "a-1", "name": "s1", "type": "spec", "status": "draft", "content": "old", "metadata": {}, "project_slug": "demo"}}
+    client = _client(svc)
+
+    renamed = client.patch(
+        "/api/v1/projects/demo",
+        json={"name": "Demo two", "slug": "demo-two"},
+        headers=_auth(),
+    )
+    assert renamed.status_code == 200
+    assert renamed.json()["slug"] == "demo-two"
+    assert renamed.json()["name"] == "Demo two"
+
+    missing = client.delete("/api/v1/projects/missing", headers=_auth())
+    assert missing.status_code == 404
+
+    removed = client.delete("/api/v1/projects/demo-two", headers=_auth())
+    assert removed.status_code == 200
+    assert removed.json()["deleted"] is True
+
+    gone = client.delete("/api/v1/artifacts/a-1", headers=_auth())
+    assert gone.status_code == 200
+    assert gone.json() == {"deleted": True, "id": "a-1"}
+    assert "a-1" not in svc.artifacts
+
+    again = client.delete("/api/v1/artifacts/a-1", headers=_auth())
+    assert again.status_code == 404
+
+
+def test_create_and_revoke_api_key() -> None:
+    svc = StubService()
+    client = _client(svc)
+
+    created = client.post(
+        "/api/v1/keys",
+        json={"description": "Cursor jeff_ai", "project_slug": "jeff-ai"},
+        headers=_auth(),
+    )
+    assert created.status_code == 201
+    body = created.json()
+    assert body["key"] == "plain-text-once"
+    assert body["prefix"] == "aabbccdd"
+    assert body["project_slug"] == "jeff-ai"
+    assert "key_hash" not in body
+
+    missing_project = client.post(
+        "/api/v1/keys",
+        json={"description": "x", "project_slug": "missing"},
+        headers=_auth(),
+    )
+    assert missing_project.status_code == 404
+
+    revoked = client.post(f"/api/v1/keys/{body['id']}/revoke", headers=_auth())
+    assert revoked.status_code == 200
+    assert revoked.json()["status"] == "revoked"
+    assert "key" not in revoked.json()
+
+    unknown = client.post("/api/v1/keys/nope/revoke", headers=_auth())
+    assert unknown.status_code == 404
+
+
+def test_create_api_key_rejects_bad_slug_and_expiry() -> None:
+    svc = StubService()
+    client = _client(svc)
+
+    bad_slug = client.post(
+        "/api/v1/keys",
+        json={"project_slug": "Not A Slug"},
+        headers=_auth(),
+    )
+    assert bad_slug.status_code == 422
+
+    bad_date = client.post(
+        "/api/v1/keys",
+        json={"expires_at": "not-a-date"},
+        headers=_auth(),
+    )
+    assert bad_date.status_code == 422

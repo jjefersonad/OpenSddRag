@@ -72,6 +72,34 @@ class ProjectCreate(BaseModel):
         return value
 
 
+class ProjectUpdate(BaseModel):
+    """PATCH /api/v1/projects/{slug}. Omitted fields stay unchanged."""
+
+    name: str | None = None
+    slug: str | None = None
+    description: str | None = None
+    language: str | None = None
+
+    @field_validator("slug")
+    @classmethod
+    def slug_must_be_kebab_case(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        if not SLUG_PATTERN.fullmatch(value):
+            raise ValueError(
+                "slug must be kebab-case: lowercase letters/digits "
+                "separated by single hyphens"
+            )
+        return value
+
+    @field_validator("name")
+    @classmethod
+    def name_must_not_be_blank(cls, value: str | None) -> str | None:
+        if value is not None and not value.strip():
+            raise ValueError("name must not be blank")
+        return value
+
+
 class ProjectOut(BaseModel):
     id: str
     name: str
@@ -92,9 +120,17 @@ class ArtifactCreate(BaseModel):
 
 
 class ArtifactUpdate(BaseModel):
+    name: str | None = None
     content: str | None = None
     metadata: dict[str, Any] | None = None
     status: str | None = None
+
+    @field_validator("name")
+    @classmethod
+    def name_must_not_be_blank(cls, value: str | None) -> str | None:
+        if value is not None and not value.strip():
+            raise ValueError("name must not be blank")
+        return value
 
 
 class ArtifactOut(BaseModel):
@@ -146,6 +182,29 @@ class TaskUpdate(BaseModel):
     done: bool
 
 
+# ── MCP API keys (management REST; plaintext only on create) ──────────────────
+
+
+class ApiKeyCreate(BaseModel):
+    """POST /api/v1/keys. `project_slug` omitted/blank → global key."""
+
+    description: str = ""
+    project_slug: str | None = None
+    expires_at: str | None = None
+
+    @field_validator("project_slug")
+    @classmethod
+    def slug_must_be_kebab_or_empty(cls, value: str | None) -> str | None:
+        if value is None or value == "":
+            return None
+        if not SLUG_PATTERN.fullmatch(value):
+            raise ValueError(
+                "project_slug must be kebab-case: lowercase letters/digits "
+                "separated by single hyphens"
+            )
+        return value
+
+
 # ── Search (web-api-management REQ-005) ──────────────────────────────────────
 
 
@@ -160,6 +219,7 @@ class SearchOut(BaseModel):
 
 __all__ = [
     "SLUG_PATTERN",
+    "ApiKeyCreate",
     "ArtifactCreate",
     "ArtifactOut",
     "ArtifactUpdate",

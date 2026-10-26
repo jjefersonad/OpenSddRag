@@ -1,10 +1,12 @@
 import { useState, type FormEvent } from "react";
 import { ApiError } from "../../api/client";
-import { createProject } from "../../api/projects";
+import { createProject, updateProject } from "../../api/projects";
+import type { Project } from "../../api/types";
 
 interface Props {
   onClose: () => void;
-  onChanged: () => void;
+  onChanged: (slug?: string) => void;
+  project?: Project | null;
 }
 
 function fieldMessages(details: unknown): string[] {
@@ -20,10 +22,11 @@ function fieldMessages(details: unknown): string[] {
 
 /** "New project" modal (REQ-006): duplicate slug → inline error, modal stays
  *  open; validation errors → field messages; success → onChanged. */
-export default function CreateProjectModal({ onClose, onChanged }: Props) {
-  const [name, setName] = useState("");
-  const [slug, setSlug] = useState("");
-  const [description, setDescription] = useState("");
+export default function CreateProjectModal({ onClose, onChanged, project }: Props) {
+  const editing = Boolean(project);
+  const [name, setName] = useState(project?.name ?? "");
+  const [slug, setSlug] = useState(project?.slug ?? "");
+  const [description, setDescription] = useState(project?.description ?? "");
   const [slugError, setSlugError] = useState<string | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
@@ -34,8 +37,13 @@ export default function CreateProjectModal({ onClose, onChanged }: Props) {
     setErrors([]);
     setBusy(true);
     try {
-      await createProject({ name, slug, description });
-      onChanged();
+      if (editing && project) {
+        const saved = await updateProject(project.slug, { name, slug, description });
+        onChanged(saved.slug);
+      } else {
+        await createProject({ name, slug, description });
+        onChanged();
+      }
     } catch (error) {
       if (error instanceof ApiError && error.code === "CONFLICT") {
         setSlugError("This slug already exists.");
@@ -76,7 +84,7 @@ export default function CreateProjectModal({ onClose, onChanged }: Props) {
           gap: "12px",
         }}
       >
-        <h2 style={{ margin: 0, fontSize: "16px" }}>New project</h2>
+        <h2 style={{ margin: 0, fontSize: "16px" }}>{editing ? "Edit project" : "New project"}</h2>
 
         <label htmlFor="project-name" className="label">
           Name
@@ -134,7 +142,7 @@ export default function CreateProjectModal({ onClose, onChanged }: Props) {
               fontWeight: 600,
             }}
           >
-            Create
+            {editing ? "Save" : "Create"}
           </button>
         </div>
       </form>

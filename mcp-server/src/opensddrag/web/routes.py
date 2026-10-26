@@ -11,6 +11,7 @@ from starlette.routing import Route
 
 from opensddrag.web.api.artifacts import artifact_routes
 from opensddrag.web.api.flows import flows_routes
+from opensddrag.web.api.keys import key_routes
 from opensddrag.web.api.projects import project_routes
 from opensddrag.web.api.rules import rule_routes
 from opensddrag.web.api.search import search_routes
@@ -29,6 +30,7 @@ def build_routes(service: ManagementServiceProtocol) -> list[Route]:
         *task_routes(service),
         *trace_routes(service),
         *search_routes(service),
+        *key_routes(service),
     ]
 
 

@@ -1,8 +1,11 @@
-import { useState } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { ApiError } from "../../api/client";
+import { deleteProject } from "../../api/projects";
+import type { Project } from "../../api/types";
+import ConfirmDialog from "../../components/ConfirmDialog";
 import { useProjects } from "../../hooks/useProjects";
 import CreateProjectModal from "./CreateProjectModal";
-import type { Project } from "../../api/types";
 
 /** Relative short time ("3h ago") from an ISO timestamp. */
 export function relativeTime(iso?: string | null): string {
@@ -22,18 +25,35 @@ const PIPELINE_BAR = {
   pending: "rgba(255,255,255,0.08)",
 } as const;
 
+const ACTION_BUTTON = {
+  background: "transparent",
+  border: "1px solid var(--color-border)",
+  borderRadius: "6px",
+  color: "var(--color-text-secondary)",
+  fontSize: "12px",
+  padding: "4px 8px",
+  cursor: "pointer",
+} as const;
+
 /** One dashboard card (REQ-013): name, mono slug, stage chip (omitted when
  *  the flow declares no lifecycle), description, mini phase pipeline (one bar
  *  per phase, omitted when there are none), footer with language, relative
- *  time and `done/total tasks`. The whole card links to the project. */
-export function ProjectCard({ project }: { project: Project }) {
+ *  time and `done/total tasks`. The card body links to the project. */
+export function ProjectCard({
+  project,
+  onEdit,
+  onDelete,
+}: {
+  project: Project;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
   const done = project.task_progress?.done ?? 0;
   const total = project.task_progress?.total ?? 0;
   const phases = project.phases ?? [];
   return (
     <li data-testid={`project-card-${project.slug}`} style={{ display: "flex" }}>
-      <Link
-        to={`/p/${project.slug}`}
+      <div
         style={{
           flex: 1,
           display: "flex",
@@ -44,16 +64,22 @@ export function ProjectCard({ project }: { project: Project }) {
           borderRadius: "12px",
           padding: "20px",
           color: "var(--color-text-primary)",
-          textDecoration: "none",
         }}
       >
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "12px" }}>
-          <div style={{ minWidth: 0 }}>
+          <Link to={`/p/${project.slug}`} style={{ minWidth: 0, color: "inherit", textDecoration: "none" }}>
             <div style={{ fontSize: "16px", fontWeight: 600 }}>{project.name}</div>
             <div style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-tertiary)", marginTop: "3px" }}>
               {project.slug}
             </div>
-          </div>
+          </Link>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <button type="button" onClick={onEdit} style={ACTION_BUTTON}>
+              Edit
+            </button>
+            <button type="button" onClick={onDelete} style={{ ...ACTION_BUTTON, color: "var(--color-danger)" }}>
+              Delete
+            </button>
           {project.phase ? (
             <span
               data-testid={`stage-chip-${project.slug}`}
@@ -70,7 +96,12 @@ export function ProjectCard({ project }: { project: Project }) {
               {project.phase}
             </span>
           ) : null}
+          </div>
         </div>
+        <Link
+          to={`/p/${project.slug}`}
+          style={{ display: "flex", flexDirection: "column", gap: "14px", flex: 1, color: "inherit", textDecoration: "none" }}
+        >
         {project.description ? (
           <p style={{ margin: 0, color: "var(--color-text-secondary)", fontSize: "13.5px", lineHeight: 1.5 }}>
             {project.description}
@@ -106,7 +137,8 @@ export function ProjectCard({ project }: { project: Project }) {
             {done}/{total} tasks
           </span>
         </div>
-      </Link>
+        </Link>
+      </div>
     </li>
   );
 }
@@ -115,7 +147,37 @@ export function ProjectCard({ project }: { project: Project }) {
  *  state and create modal. */
 export default function Dashboard() {
   const { projects, loading, error, reload } = useProjects();
+  const location = useLocation();
+  const navigate = useNavigate();
   const [createOpen, setCreateOpen] = useState(false);
+  const [editing, setEditing] = useState<Project | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<Project | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const arrived = (location.state as { notice?: unknown } | null)?.notice;
+  const [notice, setNotice] = useState<string | null>(null);
+  useEffect(() => {
+    if (typeof arrived !== "string") return;
+    setNotice(arrived);
+    navigate(location.pathname, { replace: true, state: null });
+  }, [arrived, location.pathname, navigate]);
+
+  async function confirmDelete() {
+    if (!pendingDelete) return;
+    setDeleting(true);
+    setDeleteError(null);
+    const name = pendingDelete.name;
+    try {
+      await deleteProject(pendingDelete.slug);
+      setPendingDelete(null);
+      setNotice(`Project ${name} was deleted.`);
+      reload();
+    } catch (err) {
+      setDeleteError(err instanceof ApiError ? err.message : "Could not reach the API.");
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   return (
     <section>
@@ -151,6 +213,23 @@ export default function Dashboard() {
         </button>
       </header>
 
+      {notice ? (
+        <p
+          role="status"
+          data-testid="project-notice"
+          style={{
+            margin: "0 0 16px",
+            padding: "10px 12px",
+            borderRadius: "8px",
+            color: "var(--color-accent-hover)",
+            background: "rgba(16,185,129,0.1)",
+            border: "1px solid rgba(16,185,129,0.25)",
+          }}
+        >
+          {notice}
+        </p>
+      ) : null}
+
       {loading ? <p>Loading…</p> : null}
       {error ? <p role="alert">{error}</p> : null}
 
@@ -162,7 +241,15 @@ export default function Dashboard() {
 
       <ul className="dashboard-grid">
         {projects.map((project) => (
-          <ProjectCard key={project.slug} project={project} />
+          <ProjectCard
+            key={project.slug}
+            project={project}
+            onEdit={() => setEditing(project)}
+            onDelete={() => {
+              setDeleteError(null);
+              setPendingDelete(project);
+            }}
+          />
         ))}
       </ul>
 
@@ -173,6 +260,27 @@ export default function Dashboard() {
             setCreateOpen(false);
             reload();
           }}
+        />
+      ) : null}
+      {editing ? (
+        <CreateProjectModal
+          project={editing}
+          onClose={() => setEditing(null)}
+          onChanged={() => {
+            setEditing(null);
+            reload();
+          }}
+        />
+      ) : null}
+      {pendingDelete ? (
+        <ConfirmDialog
+          title="Delete project"
+          message={`Delete ${pendingDelete.name} and every artifact in it? This cannot be undone.`}
+          confirmLabel="Delete"
+          busy={deleting}
+          error={deleteError}
+          onClose={() => setPendingDelete(null)}
+          onConfirm={confirmDelete}
         />
       ) : null}
     </section>

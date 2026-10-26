@@ -71,9 +71,28 @@ describe("ChangeReader (REQ-002 / REQ-003 / REQ-021)", () => {
     expect(reader.textContent).toContain("REST bundle, not MCP.");
     expect(reader.textContent).toContain("Load IBM Plex fonts");
     expect(reader.textContent).not.toContain("web-ui-prototype-fidelity");
+    expect(within(reader).getByTestId("change-briefing")).toHaveTextContent("Web change reader");
+    expect(within(reader).getByTestId("reader-task-progress")).toHaveTextContent("3/4 done");
 
     const labels = within(reader).getAllByText(/^(Proposal|Specs|Design|Tasks)$/);
     expect(labels.map((el) => el.textContent)).toEqual(["Proposal", "Specs", "Design", "Tasks"]);
+  });
+
+  it("limits the body to the kinds of the selected stage", async () => {
+    getChangeBundleMock.mockResolvedValue(BUNDLE);
+    const { rerender } = render(<ChangeReader slug="demo" change="web-change-reader" stageKinds={["proposal"]} />);
+    expect((await screen.findAllByText("A human cannot read what a change did")).length).toBeGreaterThan(0);
+    expect(screen.queryAllByText("Read one change.")).toHaveLength(0);
+    expect(screen.queryAllByText("REST bundle, not MCP.")).toHaveLength(0);
+    expect(screen.queryAllByText("Load IBM Plex fonts")).toHaveLength(0);
+
+    rerender(<ChangeReader slug="demo" change="web-change-reader" stageKinds={["task"]} />);
+    expect(screen.getAllByText("Load IBM Plex fonts").length).toBeGreaterThan(0);
+    expect(screen.queryAllByText("A human cannot read what a change did")).toHaveLength(0);
+
+    rerender(<ChangeReader slug="demo" change="web-change-reader" stageKinds={[]} />);
+    expect(screen.getByTestId("stage-empty")).toHaveTextContent("Nothing in this stage yet.");
+    expect(screen.queryByText("Load IBM Plex fonts")).not.toBeInTheDocument();
   });
 
   it("shows 'No design yet' when design is null and still renders other sections", async () => {

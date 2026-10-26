@@ -161,4 +161,14 @@ describe("Dashboard prototype fidelity (REQ-013)", () => {
     expect(card).toHaveTextContent("Go");
     expect(screen.getByTestId("task-progress-legacy")).toHaveTextContent("0/0 tasks");
   });
+
+  it("shows the success notice carried from a project deletion", async () => {
+    mockDashboardFetch([]);
+    render(
+      <MemoryRouter initialEntries={[{ pathname: "/projects", state: { notice: "Project CRUD Check was deleted." } }]}>
+        <Dashboard />
+      </MemoryRouter>,
+    );
+    expect(await screen.findByRole("status")).toHaveTextContent("Project CRUD Check was deleted.");
+  });
 });

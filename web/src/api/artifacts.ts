@@ -21,3 +21,28 @@ export function listArtifacts(
 export function getArtifact(id: string): Promise<Artifact> {
   return apiRequest<Artifact>(`/artifacts/${id}`);
 }
+
+export interface ArtifactWriteInput {
+  name: string;
+  content: string;
+  status?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export function createArtifact(
+  slug: string,
+  input: ArtifactWriteInput & { type: string },
+): Promise<Artifact> {
+  return apiRequest<Artifact>(`/projects/${encodeURIComponent(slug)}/artifacts`, {
+    method: "POST",
+    body: input,
+  });
+}
+
+export function updateArtifact(id: string, input: ArtifactWriteInput): Promise<Artifact> {
+  return apiRequest<Artifact>(`/artifacts/${id}`, { method: "PATCH", body: input });
+}
+
+export function deleteArtifact(id: string): Promise<{ deleted: boolean; id: string }> {
+  return apiRequest(`/artifacts/${id}`, { method: "DELETE" });
+}

@@ -41,16 +41,28 @@ async def create_key(
             return _row_to_api_key(row), raw
 
 
-async def list_keys(project_id: UUID | None = None) -> list[ApiKey]:
+async def list_keys(
+    project_id: UUID | None = None,
+    *,
+    include_revoked: bool = True,
+    global_only: bool = False,
+) -> list[ApiKey]:
+    clauses: list[str] = []
+    params: list[str] = []
+    if global_only:
+        clauses.append("project_id IS NULL")
+    elif project_id is not None:
+        clauses.append("project_id = %s")
+        params.append(str(project_id))
+    if not include_revoked:
+        clauses.append("revoked_at IS NULL")
+    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
     async with get_conn() as conn:
         async with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
-            if project_id is None:
-                await cur.execute("SELECT * FROM api_keys ORDER BY created_at DESC")
-            else:
-                await cur.execute(
-                    "SELECT * FROM api_keys WHERE project_id = %s ORDER BY created_at DESC",
-                    (str(project_id),),
-                )
+            await cur.execute(
+                f"SELECT * FROM api_keys {where} ORDER BY created_at DESC",
+                params,
+            )
             rows = await cur.fetchall()
             return [_row_to_api_key(r) for r in rows]
 

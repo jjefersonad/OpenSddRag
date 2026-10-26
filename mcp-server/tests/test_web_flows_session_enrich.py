@@ -264,7 +264,7 @@ async def test_list_changes_per_change_pipeline(artifacts) -> None:
             await conn.execute("UPDATE artifacts SET flow='sddpipeline' WHERE name=%s", (n,))
         await conn.execute("UPDATE artifacts SET flow='sddpipeline' WHERE name='p1-chg2-proposal'")
 
-    changes = await svc.list_changes(slug)
+    changes = (await svc.list_changes(slug))["items"]
     by_name = {c["change"]: c for c in changes}
     assert "chg-one" in by_name and "chg-two" in by_name
 
@@ -287,7 +287,7 @@ async def test_list_changes_per_change_pipeline(artifacts) -> None:
     slug2 = f"test-changes-empty-{uuid4().hex[:8]}"
     proj2 = await project_repository.create_project(ProjectCreate(slug=slug2, name=slug2))
     try:
-        assert await svc.list_changes(slug2) == []
+        assert (await svc.list_changes(slug2))["items"] == []
     finally:
         async with get_conn() as conn:
             await conn.execute("DELETE FROM projects WHERE id = %s", (str(proj2.id),))

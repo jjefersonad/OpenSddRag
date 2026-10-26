@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
-import { getProject } from "../../api/projects";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { ApiError } from "../../api/client";
+import { deleteProject, getProject } from "../../api/projects";
+import ConfirmDialog from "../../components/ConfirmDialog";
+import CreateProjectModal from "./CreateProjectModal";
 import { listFlows } from "../../api/flows";
-import { getChanges, type ChangeSummary } from "../../api/changes";
+import { CHANGES_PAGE_SIZE, getChanges, type ChangeSummary } from "../../api/changes";
 import type { FlowInfo, ProjectDetailData } from "../../api/types";
 import TabBar, { type TabBarTab } from "../../components/ui/TabBar";
 import ArtifactsTab from "../artifacts/ArtifactsTab";
@@ -23,17 +26,32 @@ import ChangeReader from "../changes/ChangeReader";
  */
 export default function ProjectDetail() {
   const { slug, change } = useParams();
+  const navigate = useNavigate();
   const [project, setProject] = useState<ProjectDetailData | null>(null);
   const [flows, setFlows] = useState<FlowInfo[]>([]);
   const [changes, setChanges] = useState<ChangeSummary[] | null>(null);
+  const [changesTotal, setChangesTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pageSlug, setPageSlug] = useState(slug);
+  const [revision, setRevision] = useState(0);
+  if (slug !== pageSlug) {
+    setPageSlug(slug);
+    setPage(1);
+    setProject(null);
+    setChanges(null);
+    setRevision(0);
+  }
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState("overview");
+  const [stage, setStage] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     let active = true;
     if (!slug) return;
-    setProject(null);
-    setChanges(null);
     setError(null);
     getProject(slug)
       .then((data) => {
@@ -43,11 +61,34 @@ export default function ProjectDetail() {
         if (active) setError(err instanceof Error ? err.message : "failed to load project");
       });
     listFlows().then((f) => active && setFlows(f), () => active && setFlows([]));
-    getChanges(slug).then((c) => active && setChanges(c), () => active && setChanges([]));
     return () => {
       active = false;
     };
-  }, [slug]);
+  }, [slug, revision]);
+
+  useEffect(() => {
+    let active = true;
+    if (!slug) return;
+    getChanges(slug, page, CHANGES_PAGE_SIZE).then(
+      (data) => {
+        if (!active) return;
+        setChanges(data.items);
+        setChangesTotal(data.total);
+      },
+      () => {
+        if (!active) return;
+        setChanges([]);
+        setChangesTotal(0);
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [slug, page, revision]);
+
+  useEffect(() => {
+    setStage(null);
+  }, [slug, change]);
 
   const tabs = useMemo(
     () => buildTabs(project, flows),
@@ -57,8 +98,13 @@ export default function ProjectDetail() {
   if (error) return <p role="alert">{error}</p>;
   if (!project) return <p>Loading…</p>;
 
-  const activeChange = changes?.[0] ?? null;
-  const stripPhases = activeChange ? headerStripPhases(activeChange, flows) : null;
+  const headerChange = change
+    ? (changes?.find((entry) => entry.change === change) ?? null)
+    : (changes?.[0] ?? null);
+  const stripPhases = headerChange ? headerStripPhases(headerChange, flows) : null;
+  const stageKinds = stage
+    ? (flows.find((flow) => flow.flow === headerChange?.flow)?.lifecycle?.find((phase) => phase.name === stage)?.kinds ?? [])
+    : null;
 
   const tabBarTabs: TabBarTab[] = tabs.map((entry) => ({
     key: entry.key,
@@ -73,7 +119,7 @@ export default function ProjectDetail() {
           <h1 data-testid="app-h1" style={{ margin: 0, fontSize: "25px", fontWeight: 700, letterSpacing: "-0.02em" }}>
             {project.name ?? project.slug}
           </h1>
-          {activeChange ? (
+          {headerChange ? (
             <span
               data-testid="detail-stage-chip"
               style={{
@@ -86,22 +132,44 @@ export default function ProjectDetail() {
                 border: "1px solid rgba(16,185,129,0.25)",
               }}
             >
-              {activeChangePhaseName(activeChange)}
+              {activeChangePhaseName(headerChange)}
             </span>
           ) : null}
+          <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+            <button type="button" onClick={() => setEditing(true)} style={HEADER_ACTION}>
+              Edit
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setDeleteError(null);
+                setConfirmingDelete(true);
+              }}
+              style={{ ...HEADER_ACTION, color: "var(--color-danger)" }}
+            >
+              Delete
+            </button>
+          </div>
         </div>
-        {activeChange ? (
+        {headerChange ? (
           <div
             data-testid="header-change-line"
             style={{ fontFamily: "var(--font-mono)", fontSize: "12.5px", color: "var(--color-text-tertiary)" }}
           >
-            change: <span style={{ color: "var(--color-accent-hover)" }}>{activeChange.change}</span>
+            change: <span style={{ color: "var(--color-accent-hover)" }}>{headerChange.change}</span>
             {project.language ? <> · {project.language}</> : null}
           </div>
         ) : null}
       </header>
 
-      {activeChange && stripPhases ? <FlowPhaseStrip flow={activeChange.flow} phases={stripPhases} /> : null}
+      {headerChange && stripPhases ? (
+        <FlowPhaseStrip
+          flow={headerChange.flow}
+          phases={stripPhases}
+          selected={stage}
+          onSelect={change ? (name) => setStage((current) => (current === name ? null : name)) : undefined}
+        />
+      ) : null}
 
       {change ? (
         <>
@@ -114,22 +182,72 @@ export default function ProjectDetail() {
               ← Overview
             </Link>
           </p>
-          <ChangeReader slug={slug ?? ""} change={change} />
+          <ChangeReader
+            slug={slug ?? ""}
+            change={change}
+            summary={headerChange}
+            stageKinds={stageKinds}
+            onChanged={() => setRevision((value) => value + 1)}
+          />
         </>
       ) : (
         <>
           <TabBar tabs={tabBarTabs} active={tab} onSelect={setTab} />
           <div role="tabpanel">
-            {renderTabContent(slug ?? "", tab, flows, changes, (nodeType: string) => {
+            {renderTabContent(slug ?? "", tab, flows, changes, changesTotal, page, setPage, () => setRevision((value) => value + 1), (nodeType: string) => {
               const target = buildTabs(project, flows).find((t) => t.type === nodeType && nodeType !== "test");
               setTab(target?.key ?? (nodeType === "test" ? "task" : "overview"));
             })}
           </div>
         </>
       )}
+      {editing && project ? (
+        <CreateProjectModal
+          project={project}
+          onClose={() => setEditing(false)}
+          onChanged={(nextSlug) => {
+            setEditing(false);
+            if (nextSlug && nextSlug !== slug) navigate(`/p/${nextSlug}`);
+            else setRevision((value) => value + 1);
+          }}
+        />
+      ) : null}
+      {confirmingDelete && project ? (
+        <ConfirmDialog
+          title="Delete project"
+          message={`Delete ${project.name ?? project.slug} and every artifact in it? This cannot be undone.`}
+          confirmLabel="Delete"
+          busy={deleting}
+          error={deleteError}
+          onClose={() => setConfirmingDelete(false)}
+          onConfirm={async () => {
+            setDeleting(true);
+            setDeleteError(null);
+            try {
+              await deleteProject(project.slug);
+              navigate("/projects", {
+                state: { notice: `Project ${project.name ?? project.slug} was deleted.` },
+              });
+            } catch (err) {
+              setDeleteError(err instanceof ApiError ? err.message : "Could not reach the API.");
+              setDeleting(false);
+            }
+          }}
+        />
+      ) : null}
     </section>
   );
 }
+
+const HEADER_ACTION = {
+  background: "transparent",
+  border: "1px solid var(--color-border)",
+  borderRadius: "6px",
+  color: "var(--color-text-secondary)",
+  fontSize: "12px",
+  padding: "4px 8px",
+  cursor: "pointer",
+} as const;
 
 /** The change's phases for the header strip; null when its flow declares no
  *  lifecycle (REQ-014 "Flow without lifecycle"). */
@@ -190,11 +308,24 @@ function renderTabContent(
   tab: string,
   flows: FlowInfo[],
   changes: ChangeSummary[] | null,
+  changesTotal: number,
+  page: number,
+  onPage: (page: number) => void,
+  onChanged: () => void,
   onNavigate: (nodeType: string) => void,
 ) {
   switch (tab) {
     case "overview":
-      return <OverviewTab slug={slug} changes={changes} />;
+      return (
+        <OverviewTab
+          slug={slug}
+          changes={changes}
+          total={changesTotal}
+          page={page}
+          pageSize={CHANGES_PAGE_SIZE}
+          onPage={onPage}
+        />
+      );
     case "hierarchy":
       return <HierarchyTab slug={slug} onNavigate={onNavigate} />;
     case "harness":
@@ -202,8 +333,8 @@ function renderTabContent(
     default: {
       const entry = buildTabs(null, flows).find((t) => t.key === tab);
       const type = entry?.type ?? tab;
-      if (type === "task") return <TaskList slug={slug} />;
-      return <ArtifactsTab slug={slug} type={type} flow={entry?.flow} />;
+      if (type === "task") return <TaskList slug={slug} onChanged={onChanged} />;
+      return <ArtifactsTab slug={slug} type={type} flow={entry?.flow} onChanged={onChanged} />;
     }
   }
 }

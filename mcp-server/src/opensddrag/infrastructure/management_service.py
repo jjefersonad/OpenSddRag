@@ -13,10 +13,12 @@ routers can hand them straight to `JSONResponse`.
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
 from opensddrag.core.domain import change_progress
+from opensddrag.core.domain.change_pages import paginate as paginate_changes
 from opensddrag.core.domain.artifact_validation import validate as validate_artifact_content
 from opensddrag.core.domain.errors import (
     ManagementValidationError,
@@ -28,7 +30,15 @@ from opensddrag.core.domain.rule_constants import (
     VALID_RULE_SEVERITIES,
     VALID_RULE_TRIGGERS,
 )
-from opensddrag.db import project_repository, repository, rule_repository, session_repository, trace_repository
+from opensddrag.db import (
+    api_key_repository,
+    project_repository,
+    repository,
+    rule_repository,
+    session_repository,
+    trace_repository,
+)
+from opensddrag.models.api_key import ApiKey
 from opensddrag.db.flow_registry import registered_kinds
 from opensddrag.embedding.service import embed
 from opensddrag.models.artifact import Artifact, ArtifactCreate, ArtifactStatus, ArtifactType, ArtifactUpdate
@@ -309,6 +319,39 @@ class SqlManagementService:
         )
         return _project_out(project)
 
+    async def update_project(
+        self,
+        slug: str,
+        name: str | None = None,
+        description: str | None = None,
+        language: str | None = None,
+        new_slug: str | None = None,
+    ) -> dict[str, Any]:
+        await self._project_or_404(slug)
+        if new_slug and new_slug != slug:
+            taken = await project_repository.get_project_by_slug(new_slug)
+            if taken is not None:
+                raise ResourceConflictError(f"project slug {new_slug!r} already exists")
+        try:
+            updated = await project_repository.update_project(
+                slug,
+                name=name,
+                description=description,
+                language=language,
+                new_slug=new_slug,
+            )
+        except ValueError as exc:
+            raise ResourceConflictError(str(exc)) from exc
+        if updated is None:
+            raise ResourceNotFoundError(f"project {slug!r} not found")
+        return _project_out(updated)
+
+    async def delete_project(self, slug: str) -> dict[str, Any]:
+        deleted = await project_repository.delete_project(slug)
+        if not deleted:
+            raise ResourceNotFoundError(f"project {slug!r} not found")
+        return {"deleted": True, "slug": slug}
+
     async def get_project(self, slug: str) -> dict[str, Any]:
         project = await project_repository.get_project_by_slug(slug)
         if project is None:
@@ -387,12 +430,13 @@ class SqlManagementService:
         "Archive": "Close the change, record in history.",
     }
 
-    async def list_changes(self, slug: str) -> list[dict[str, Any]]:
-        """Live changes with per-change pipelines (web-api REQ-011).
+    async def list_changes(self, slug: str, page: int = 1, page_size: int = 8) -> dict[str, Any]:
+        """One page of live changes, newest `updated_at` first (web-api REQ-011).
 
         Liveness, phase and task progress come from `core.domain.change_progress`
         (project-management REQ-005/006/007): synced main specs never keep a
         change live, phases are progress-based, archived tasks count as done.
+        The page is applied after that derivation. `total` is the full count.
         """
         project = await self._project_or_404(slug)
         artifacts = await repository.list_artifacts(project.id)
@@ -424,7 +468,7 @@ class SqlManagementService:
                     "phases": phases,
                 }
             )
-        return out
+        return paginate_changes(out, page, page_size)
 
     async def get_change_bundle(self, slug: str, change: str) -> dict[str, Any]:
         """Full-document bundle for one named change (web-api-management REQ-014).
@@ -452,6 +496,7 @@ class SqlManagementService:
             meta = artifact.metadata or {}
             tasks.append(
                 {
+                    "id": str(artifact.id),
                     "name": artifact.name,
                     "status": artifact.status.value,
                     "content": artifact.content,
@@ -732,6 +777,7 @@ class SqlManagementService:
         content: str | None = None,
         metadata: dict[str, Any] | None = None,
         status: str | None = None,
+        name: str | None = None,
     ) -> dict[str, Any]:
         try:
             aid = UUID(artifact_id)
@@ -749,16 +795,31 @@ class SqlManagementService:
                 raise ManagementValidationError(
                     f"unknown status {status!r}", details=[valid]
                 ) from exc
+        if name is not None and name != artifact.name:
+            taken = await repository.get_artifact(artifact.project_id, name)
+            if taken is not None:
+                raise ResourceConflictError(f"artifact name {name!r} already exists")
         embedding = embed(content) if content is not None else None
         updated = await repository.update_artifact(
             artifact.project_id,
             artifact.name,
             ArtifactUpdate(content=content, metadata=metadata, status=status_enum),
             embedding,
+            new_name=name if name and name != artifact.name else None,
         )
         if updated is None:
             raise ResourceNotFoundError(f"artifact {artifact_id!r} not found")
         return _artifact_full(updated)
+
+    async def delete_artifact(self, artifact_id: str) -> dict[str, Any]:
+        try:
+            aid = UUID(artifact_id)
+        except ValueError as exc:
+            raise ResourceNotFoundError(f"artifact {artifact_id!r} not found") from exc
+        deleted = await repository.delete_artifact(aid)
+        if not deleted:
+            raise ResourceNotFoundError(f"artifact {artifact_id!r} not found")
+        return {"deleted": True, "id": artifact_id}
 
     async def link_artifact(
         self,
@@ -801,6 +862,103 @@ class SqlManagementService:
             "relationship_type": relationship.relationship_type,
             "created_at": _iso(relationship.created_at),
         }
+
+    async def list_api_keys(
+        self,
+        project_slug: str | None = None,
+        include_revoked: bool = False,
+        scope: str | None = None,
+    ) -> list[dict[str, Any]]:
+        project_id = None
+        global_only = False
+        if scope not in (None, "", "global"):
+            raise ManagementValidationError(
+                f"invalid scope {scope!r}", details=["global"]
+            )
+        if scope == "global" and project_slug:
+            raise ManagementValidationError(
+                "scope=global cannot be combined with project"
+            )
+        if scope == "global":
+            global_only = True
+        elif project_slug:
+            project_id = (await self._project_or_404(project_slug)).id
+        keys = await api_key_repository.list_keys(
+            project_id, include_revoked=include_revoked, global_only=global_only
+        )
+        slugs = await _project_slug_map()
+        return [_api_key_out(key, slugs) for key in keys]
+
+    async def create_api_key(
+        self,
+        description: str = "",
+        project_slug: str | None = None,
+        expires_at: str | None = None,
+    ) -> dict[str, Any]:
+        project_id = None
+        if project_slug:
+            project_id = (await self._project_or_404(project_slug)).id
+        key, plaintext = await api_key_repository.create_key(
+            description=description,
+            project_id=project_id,
+            expires_at=_parse_expires_at(expires_at),
+        )
+        slugs = await _project_slug_map()
+        return {**_api_key_out(key, slugs), "key": plaintext}
+
+    async def revoke_api_key(self, key_id: str) -> dict[str, Any]:
+        try:
+            uid = UUID(key_id)
+        except ValueError as exc:
+            raise ResourceNotFoundError(f"api key {key_id!r} not found") from exc
+        key = await api_key_repository.revoke_key(uid)
+        if key is None:
+            raise ResourceNotFoundError(f"api key {key_id!r} not found")
+        slugs = await _project_slug_map()
+        return _api_key_out(key, slugs)
+
+
+def _parse_expires_at(value: str | None) -> datetime | None:
+    if value is None or value == "":
+        return None
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError as exc:
+        raise ManagementValidationError(
+            "expires_at must be an ISO date or datetime"
+        ) from exc
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed
+
+
+def _key_status(key: ApiKey) -> str:
+    if key.revoked_at is not None:
+        return "revoked"
+    if key.expires_at is not None:
+        expires = key.expires_at
+        if expires.tzinfo is None:
+            expires = expires.replace(tzinfo=timezone.utc)
+        if expires < datetime.now(tz=timezone.utc):
+            return "expired"
+    return "active"
+
+
+def _api_key_out(key: ApiKey, slugs: dict[UUID, str]) -> dict[str, Any]:
+    return {
+        "id": str(key.id),
+        "prefix": key.key_prefix,
+        "description": key.description,
+        "project_slug": slugs.get(key.project_id) if key.project_id else None,
+        "created_at": _iso(key.created_at),
+        "expires_at": _iso(key.expires_at),
+        "revoked_at": _iso(key.revoked_at),
+        "status": _key_status(key),
+    }
+
+
+async def _project_slug_map() -> dict[UUID, str]:
+    return {p.id: p.slug for p in await project_repository.list_projects()}
 
 
 def build_management_service() -> SqlManagementService:

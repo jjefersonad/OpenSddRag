@@ -144,7 +144,7 @@ Delivery component exposing 23 tools. It contains no business logic:
 1. `_resolve_caller()` — extracts the project slug from the MCP context and builds the `Caller` (DTO) with `Permission.ADMIN`.
 2. `MCPServerAdapter.call_tool()` → `execute_tool.execute()` (the use case).
 3. `_serialize_response()` — serializes `Response` into `TextContent` JSON. Errors become the structured envelope `{"error": {"code": ..., "message": ...}}`, never `None`.
-4. **Transports:** `stdio` (Claude Code spawn) or `sse` (HTTP, Starlette + StreamableHTTPSessionManager). The `AuthMiddleware` protects only the HTTP transport when `AUTH_ENABLED=true`.
+4. **Transports:** `stdio` (Claude Code spawn) or `sse` (HTTP, Starlette + StreamableHTTPSessionManager). The `AuthMiddleware` protects only the HTTP transport when `AUTH_ENABLED=true`. `POST /mcp` is rewritten in-process to `/mcp/` (no 307) so Streamable HTTP clients keep the configured `Authorization` header.
 
 **Rule:** no tool imports repositories or SQL directly. Any new tool goes through the same use-case pipeline and inherits auth/rate-limiting/validation/logging for free.
 
@@ -212,6 +212,12 @@ type and clickable nodes.
 `GET /api/v1/projects/:slug/changes` lists every live change of the project with
 `started_at` (min artifact `created_at`), `updated_at`, `task_progress` and its
 own progress-based phase pipeline (from the manifest lifecycle).
+**API keys:** `GET/POST /api/v1/keys` and `POST /api/v1/keys/:id/revoke` manage
+MCP Bearer keys (same `api_keys` table as the CLI). List/revoke payloads omit
+`key` and `key_hash`; create returns plaintext once. This is the management
+API (token `MANAGEMENT_API_TOKEN`), not the MCP `/mcp` authenticator — key
+lookup and `AuthMiddleware` are unchanged.
+
 `GET /api/v1/projects/:slug/changes/:change` is a separate resource: the
 dashboard Change Reader's full-document bundle (`{change, flow, proposal,
 design, specs, tasks, task_count}`). Members are every artifact whose

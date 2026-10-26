@@ -5,11 +5,13 @@ import { getSession, type SessionSummary } from "../../api/session";
 import { listTraces } from "../../api/traces";
 import type { ExecutionTrace } from "../../api/types";
 import {
-  CHANGES_PAGE_SIZE,
   changeStage,
   changeStartAt,
   formatChangeDate,
-  paginateChanges,
+  humanizeChangeName,
+  stageColor,
+  taskProgressLabel,
+  taskProgressRatio,
 } from "./changeList";
 
 /**
@@ -55,32 +57,51 @@ const TD = {
   fontSize: 13,
 };
 
-function ChangeList({ slug, changes }: { slug: string; changes: ChangeSummary[] }) {
-  const [page, setPage] = useState(0);
-  const pageCount = Math.max(1, Math.ceil(changes.length / CHANGES_PAGE_SIZE));
-  const safePage = Math.min(page, pageCount - 1);
-  const visible = paginateChanges(changes, safePage);
+function ChangeList({
+  slug,
+  changes,
+  total,
+  page,
+  pageSize,
+  onPage,
+}: {
+  slug: string;
+  changes: ChangeSummary[];
+  total: number;
+  page: number;
+  pageSize: number;
+  onPage: (page: number) => void;
+}) {
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  const safePage = Math.min(page, pageCount);
 
   return (
     <div data-testid="changes-list">
+      <p data-testid="changes-portfolio" style={{ margin: "0 0 12px", fontFamily: "var(--font-mono)", fontSize: 11, color: "#8a9298" }}>
+        {total} live
+      </p>
       <table style={{ width: "100%", borderCollapse: "collapse", background: "var(--color-card)", border: "1px solid var(--color-border)", borderRadius: 12, overflow: "hidden" }}>
         <thead>
           <tr>
             <th style={TH}>Change</th>
-            <th style={{ ...TH, width: 130 }}>Started</th>
-            <th style={{ ...TH, width: 110 }}>Stage</th>
+            <th style={{ ...TH, width: 88 }}>Progress</th>
+            <th style={{ ...TH, width: 118 }}>Started</th>
+            <th style={{ ...TH, width: 96 }}>Stage</th>
           </tr>
         </thead>
         <tbody>
-          {visible.map((summary) => (
+          {changes.map((summary) => {
+            const stage = changeStage(summary);
+            const ratio = taskProgressRatio(summary.task_progress);
+            return (
             <tr key={summary.change}>
-              <td style={TD} colSpan={3}>
+              <td style={TD} colSpan={4}>
                 <Link
                   to={`/p/${slug}/c/${encodeURIComponent(summary.change)}`}
                   data-testid={`change-card-${summary.change}`}
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "1fr 130px 110px",
+                    gridTemplateColumns: "1fr 88px 118px 96px",
                     alignItems: "center",
                     margin: "-11px -12px",
                     padding: "11px 12px",
@@ -88,12 +109,18 @@ function ChangeList({ slug, changes }: { slug: string; changes: ChangeSummary[] 
                     color: "inherit",
                   }}
                 >
-                  <span style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-                    <span style={{ fontFamily: "var(--font-mono)", fontSize: 13.5, fontWeight: 600, color: "#e8ebed", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  <span style={{ minWidth: 0 }}>
+                    <span style={{ display: "block", fontSize: 13.5, fontWeight: 600, color: "#e8ebed", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {humanizeChangeName(summary.change)}
+                    </span>
+                    <span style={{ display: "block", fontFamily: "var(--font-mono)", fontSize: 11, color: "#5b6469", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {summary.change}
                     </span>
-                    <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "#34d399", background: "rgba(52,211,153,0.12)", borderRadius: 5, padding: "2px 7px", flexShrink: 0 }}>
-                      {summary.flow}
+                  </span>
+                  <span data-testid={`change-progress-${summary.change}`} style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "#cdd3d7" }}>
+                    <span>{taskProgressLabel(summary.task_progress)}</span>
+                    <span style={{ display: "block", height: 3, marginTop: 5, background: "rgba(255,255,255,0.08)", borderRadius: 99, overflow: "hidden" }}>
+                      <span style={{ display: "block", height: "100%", width: `${Math.round(ratio * 100)}%`, background: "#34d399" }} />
                     </span>
                   </span>
                   <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "#8a9298" }}>
@@ -101,54 +128,55 @@ function ChangeList({ slug, changes }: { slug: string; changes: ChangeSummary[] 
                   </span>
                   <span
                     data-testid={`change-stage-${summary.change}`}
-                    style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "#34d399" }}
+                    style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: stageColor(stage) }}
                   >
-                    {changeStage(summary)}
+                    {stage}
                   </span>
                 </Link>
               </td>
             </tr>
-          ))}
+            );
+          })}
         </tbody>
       </table>
-      {changes.length > CHANGES_PAGE_SIZE ? (
+      {total > pageSize ? (
         <div
           data-testid="changes-pagination"
           style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 10, marginTop: 12 }}
         >
           <button
             type="button"
-            disabled={safePage === 0}
-            onClick={() => setPage((current) => Math.max(0, current - 1))}
+            disabled={safePage <= 1}
+            onClick={() => onPage(safePage - 1)}
             style={{
               background: "transparent",
               border: "1px solid var(--color-border)",
-              color: safePage === 0 ? "#4d565b" : "#cdd3d7",
+              color: safePage <= 1 ? "#4d565b" : "#cdd3d7",
               borderRadius: 6,
               padding: "4px 10px",
               fontFamily: "var(--font-mono)",
               fontSize: 11,
-              cursor: safePage === 0 ? "default" : "pointer",
+              cursor: safePage <= 1 ? "default" : "pointer",
             }}
           >
             Previous
           </button>
           <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "#8a9298" }}>
-            {safePage + 1} / {pageCount}
+            {safePage} / {pageCount}
           </span>
           <button
             type="button"
-            disabled={safePage >= pageCount - 1}
-            onClick={() => setPage((current) => Math.min(pageCount - 1, current + 1))}
+            disabled={safePage >= pageCount}
+            onClick={() => onPage(safePage + 1)}
             style={{
               background: "transparent",
               border: "1px solid var(--color-border)",
-              color: safePage >= pageCount - 1 ? "#4d565b" : "#cdd3d7",
+              color: safePage >= pageCount ? "#4d565b" : "#cdd3d7",
               borderRadius: 6,
               padding: "4px 10px",
               fontFamily: "var(--font-mono)",
               fontSize: 11,
-              cursor: safePage >= pageCount - 1 ? "default" : "pointer",
+              cursor: safePage >= pageCount ? "default" : "pointer",
             }}
           >
             Next
@@ -202,7 +230,21 @@ function TracesPanel({ traces }: { traces: ExecutionTrace[] }) {
   );
 }
 
-export default function OverviewTab({ slug, changes }: { slug: string; changes: ChangeSummary[] | null }) {
+export default function OverviewTab({
+  slug,
+  changes,
+  total,
+  page,
+  pageSize,
+  onPage,
+}: {
+  slug: string;
+  changes: ChangeSummary[] | null;
+  total: number;
+  page: number;
+  pageSize: number;
+  onPage: (page: number) => void;
+}) {
   const [session, setSession] = useState<SessionSummary | null>(null);
   const [traces, setTraces] = useState<ExecutionTrace[]>([]);
 
@@ -218,7 +260,7 @@ export default function OverviewTab({ slug, changes }: { slug: string; changes: 
   return (
     <div className="overview-grid">
       <div>
-        <div style={SECTION_LABEL}>Changes</div>
+        <div style={SECTION_LABEL}>Live changes</div>
         {changes === null ? (
           <p style={{ color: "var(--color-text-tertiary)" }}>Loading…</p>
         ) : changes.length === 0 ? (
@@ -229,7 +271,7 @@ export default function OverviewTab({ slug, changes }: { slug: string; changes: 
             No active change — run <span style={{ fontFamily: "var(--font-mono)", color: "#34d399" }}>/opsr:propose</span> to start one.
           </div>
         ) : (
-          <ChangeList slug={slug} changes={changes} />
+          <ChangeList slug={slug} changes={changes} total={total} page={page} pageSize={pageSize} onPage={onPage} />
         )}
       </div>
 

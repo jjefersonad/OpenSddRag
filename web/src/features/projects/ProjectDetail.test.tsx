@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import { routes } from "../../routes";
 
@@ -57,20 +57,25 @@ function wire(): UrlHandler {
       });
     }
     if (url.includes("/changes")) {
-      return jsonResponse(200, [
-        {
-          change: "add-stripe-billing",
-          flow: "sdd",
-          updated_at: "2026-10-08T11:00:00Z",
-          task_progress: { done: 2, total: 4 },
-          phases: [
-            { name: "Propose", status: "done", desc: "d" },
-            { name: "Spec", status: "done", desc: "d" },
-            { name: "Design", status: "done", desc: "d" },
-            { name: "Tasks", status: "active", desc: "d" },
-          ],
-        },
-      ]);
+      return jsonResponse(200, {
+        items: [
+          {
+            change: "add-stripe-billing",
+            flow: "sdd",
+            updated_at: "2026-10-08T11:00:00Z",
+            task_progress: { done: 2, total: 4 },
+            phases: [
+              { name: "Propose", status: "done", desc: "d" },
+              { name: "Spec", status: "done", desc: "d" },
+              { name: "Design", status: "done", desc: "d" },
+              { name: "Tasks", status: "active", desc: "d" },
+            ],
+          },
+        ],
+        total: 1,
+        page: 1,
+        page_size: 8,
+      });
     }
     if (url.includes("/projects/demo/session")) {
       return jsonResponse(200, { active_artifacts: [{ id: "a1", name: "p", type: "proposal" }], note: "working" });
@@ -156,7 +161,10 @@ describe("ProjectDetail header (REQ-014)", () => {
 
   it("renders no strip and keeps the tabs when there is no live change", async () => {
     const wired = wire();
-    handler = (url) => (url.includes("/changes") ? jsonResponse(200, []) : wired(url));
+    handler = (url) =>
+      url.includes("/changes")
+        ? jsonResponse(200, { items: [], total: 0, page: 1, page_size: 8 })
+        : wired(url);
     render(<RouterProvider router={createMemoryRouter(routes, { initialEntries: ["/p/demo"] })} />);
     await screen.findByTestId("app-h1");
     expect(screen.queryByTestId(/phase-strip-/)).not.toBeInTheDocument();
@@ -167,15 +175,20 @@ describe("ProjectDetail header (REQ-014)", () => {
     const wired = wire();
     handler = (url) => {
       if (url.includes("/changes")) {
-        return jsonResponse(200, [
-          {
-            change: "docs-refresh",
-            flow: "docs",
-            updated_at: "2026-10-08T11:00:00Z",
-            task_progress: { done: 0, total: 2 },
-            phases: [],
-          },
-        ]);
+        return jsonResponse(200, {
+          items: [
+            {
+              change: "docs-refresh",
+              flow: "docs",
+              updated_at: "2026-10-08T11:00:00Z",
+              task_progress: { done: 0, total: 2 },
+              phases: [],
+            },
+          ],
+          total: 1,
+          page: 1,
+          page_size: 8,
+        });
       }
       return wired(url);
     };
@@ -224,5 +237,21 @@ describe("ProjectDetail change reader (REQ-021)", () => {
     expect(screen.getByTestId("reader-back-overview")).toHaveAttribute("href", "/p/demo");
     expect(screen.queryByTestId("working-context-panel")).not.toBeInTheDocument();
     expect(screen.getByTestId("app-h1")).toBeInTheDocument();
+  });
+
+  it("clicking a stage shows only that stage's items, and clicking it again restores the change", async () => {
+    handler = wire();
+    render(
+      <RouterProvider router={createMemoryRouter(routes, { initialEntries: ["/p/demo/c/add-stripe-billing"] })} />,
+    );
+    expect((await screen.findAllByText("Bill customers.")).length).toBeGreaterThan(0);
+    fireEvent.click(await screen.findByTestId("strip-phase-sdd-Spec"));
+    expect(screen.queryAllByText("Bill customers.")).toHaveLength(0);
+    expect(screen.getByText("No specs yet")).toBeInTheDocument();
+    expect(screen.getByTestId("strip-phase-sdd-Spec")).toHaveAttribute("aria-pressed", "true");
+
+    fireEvent.click(screen.getByTestId("strip-phase-sdd-Spec"));
+    expect(screen.getAllByText("Bill customers.").length).toBeGreaterThan(0);
+    expect(screen.getByTestId("strip-phase-sdd-Spec")).toHaveAttribute("aria-pressed", "false");
   });
 });

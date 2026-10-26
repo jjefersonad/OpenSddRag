@@ -31,6 +31,7 @@ describe("AppShell (REQ-012)", () => {
     setToken("t");
     mockFetch((url) => {
       if (url.endsWith("/projects")) return jsonResponse(200, [{ id: "1", name: "Demo", slug: "demo" }]);
+      if (url.includes("/projects/demo/changes")) return jsonResponse(200, { items: [], total: 0, page: 1 });
       if (url.endsWith("/projects/demo")) {
         return jsonResponse(200, { id: "1", name: "Demo", slug: "demo", summary: {}, flows: [] });
       }
@@ -40,6 +41,7 @@ describe("AppShell (REQ-012)", () => {
     const sidebar = await screen.findByTestId("app-sidebar");
     expect(sidebar).toBeInTheDocument();
     expect(screen.getByText(/docs & design system/i)).toBeInTheDocument();
+    expect(within(sidebar).getByRole("link", { name: /api keys/i })).toBeInTheDocument();
     // Demo appears twice (sidebar link + dashboard card link) — use the
     // sidebar's copy, then assert the detail rendered.
     const sidebarLink = within(sidebar).getByRole("link", { name: "demo" });

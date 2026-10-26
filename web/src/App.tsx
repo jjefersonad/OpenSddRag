@@ -25,7 +25,8 @@ export default function App() {
   const navigate = useNavigate();
   const location = useLocation();
   const activeSlug = projectSlugFromPath(location.pathname);
-  const isDashboard = !activeSlug;
+  const isDashboard = location.pathname === "/projects" || location.pathname.startsWith("/projects/");
+  const isKeys = location.pathname === "/keys" || location.pathname.startsWith("/keys/");
 
   useEffect(() => {
     let alive = true;
@@ -126,6 +127,24 @@ export default function App() {
               ⌘K
             </span>
           </button>
+
+          <Link
+            to="/keys"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 11,
+              padding: "9px 12px",
+              borderRadius: 8,
+              cursor: "pointer",
+              fontSize: 14,
+              textDecoration: "none",
+              background: isKeys ? "rgba(16,185,129,0.1)" : "transparent",
+              color: isKeys ? "#34d399" : "#cdd3d7",
+            }}
+          >
+            <span style={{ fontFamily: "var(--font-mono)", fontSize: 13, width: 16 }}>⚿</span> API keys
+          </Link>
 
           <Link
             to="/docs"
@@ -241,6 +260,12 @@ export default function App() {
             <Link to="/projects" style={{ color: "#8a9298", textDecoration: "none" }}>
               projects
             </Link>
+            {isKeys ? (
+              <>
+                <span style={{ color: "#4d565b" }}>/</span>
+                <span style={{ color: "#e8ebed" }}>keys</span>
+              </>
+            ) : null}
             {activeSlug ? (
               <>
                 <span style={{ color: "#4d565b" }}>/</span>

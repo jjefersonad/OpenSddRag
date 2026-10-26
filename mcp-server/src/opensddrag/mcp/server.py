@@ -149,6 +149,26 @@ def _default_web_dist() -> "Any":
     return Path(__file__).resolve().parents[4] / "web" / "dist"
 
 
+class _RewriteMcpPath:
+    """Rewrite `/mcp` → `/mcp/` in-process (no HTTP redirect).
+
+    Starlette's router 307s `/mcp` to `/mcp/` because `Mount("/mcp")`
+    only matches `/mcp/...`. Streamable HTTP clients that follow the
+    redirect drop `Authorization`, so the next hop looks like a bad API key.
+    """
+
+    def __init__(self, app: Any) -> None:
+        self.app = app
+
+    async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
+        if scope.get("type") in ("http", "websocket") and scope.get("path") == "/mcp":
+            scope = dict(scope)
+            scope["path"] = "/mcp/"
+            if scope.get("raw_path") == b"/mcp":
+                scope["raw_path"] = b"/mcp/"
+        await self.app(scope, receive, send)
+
+
 def build_http_app(
     *,
     mcp_app: Any,
@@ -194,7 +214,13 @@ def build_http_app(
         if directory.is_dir():
             routes.append(Mount("/", app=StaticFiles(directory=str(directory), html=True)))
 
-    return Starlette(routes=routes, middleware=wire_cors(settings))
+    # Path rewrite must be outermost so POST /mcp never 307s. Cursor's
+    # Streamable HTTP client follows that redirect without the configured
+    # Bearer token and AuthMiddleware then returns 401 invalid/revoked key.
+    return Starlette(
+        routes=routes,
+        middleware=[Middleware(_RewriteMcpPath), *wire_cors(settings)],
+    )
 
 
 async def _main_sse(host: str, port: int, serve_web_ui: bool | None = None) -> None:

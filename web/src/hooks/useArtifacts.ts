@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { listArtifacts } from "../api/artifacts";
 import type { Artifact } from "../api/types";
 
@@ -6,6 +6,7 @@ export interface UseArtifactsResult {
   artifacts: Artifact[];
   loading: boolean;
   error: string | null;
+  reload: () => void;
 }
 
 /** Fetches a project's artifacts (optionally filtered by type) once per
@@ -19,6 +20,7 @@ export function useArtifacts(
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [nonce, setNonce] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -43,7 +45,9 @@ export function useArtifacts(
     return () => {
       active = false;
     };
-  }, [slug, type, flow, includeContent]);
+  }, [slug, type, flow, includeContent, nonce]);
 
-  return { artifacts, loading, error };
+  const reload = useCallback(() => setNonce((value) => value + 1), []);
+
+  return { artifacts, loading, error, reload };
 }

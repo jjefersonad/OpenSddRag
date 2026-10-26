@@ -226,3 +226,12 @@ export function displayTitle(input: DisplayTitleInput): string {
   const title = derived || cleanedName(input.name, input.type, changeName) || changeName || input.name;
   return title.trim() || input.name;
 }
+
+/** First sentence, capped — a manager title, not the whole Why paragraph. */
+export function briefTitle(text: string, max = 90): string {
+  const trimmed = text.trim();
+  if (!trimmed) return "";
+  const sentence = trimmed.split(/(?<=[.!?])\s/)[0] ?? trimmed;
+  if (sentence.length <= max) return sentence;
+  return `${sentence.slice(0, max - 1).trimEnd()}…`;
+}
