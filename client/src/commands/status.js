@@ -120,7 +120,7 @@ export const statusCommand = new Command("status")
       }
     } catch {
       console.log(chalk.red("offline ✗"));
-      console.log(chalk.dim("    docker compose up -d  or  opensddrag server start --transport sse"));
+      console.log(chalk.dim("    docker compose up -d  or  opensddrag-server server start --transport sse"));
     }
 
     console.log("");

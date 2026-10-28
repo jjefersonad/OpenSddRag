@@ -69,7 +69,7 @@ export default function PublicNav() {
           </span>
         </Link>
         <nav style={{ display: "flex", alignItems: "center", gap: "22px" }}>
-          <a href="https://github.com" target="_blank" rel="noreferrer" style={linkStyle}>
+          <a href="https://github.com/conexaoelite/OpenSddRag" target="_blank" rel="noreferrer" style={linkStyle}>
             GitHub
           </a>
           <Link to="/docs" style={linkStyle}>

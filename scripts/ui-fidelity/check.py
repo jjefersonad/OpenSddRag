@@ -329,8 +329,18 @@ def measure_simple_tab(page, tag: str, tab_label: str, probe: str) -> list[dict]
 
 def measure_docs(page, tag: str) -> list[dict]:
     items: list[dict] = []
-    toc_links = page.evaluate("() => document.querySelectorAll('[data-testid=docs-toc] a').length")
-    items.append(check(f"{tag}: docs TOC lists all 10 sections", toc_links == 10, f"links={toc_links}"))
+    toc_labels = page.evaluate(
+        "() => [...document.querySelectorAll('[data-testid=docs-toc] a')].map((a) => (a.textContent || '').trim())"
+    )
+    required = ["Overview", "Quickstart", "Server setup", "CLI client", "Claude Code", "OpenCode", "Pipelines", "Color"]
+    missing = [name for name in required if name not in toc_labels]
+    items.append(
+        check(
+            f"{tag}: docs TOC lists getting-started and reference sections",
+            len(toc_labels) >= 15 and not missing,
+            f"links={len(toc_labels)} missing={missing}",
+        )
+    )
     swatches = page.evaluate(
         "() => document.querySelectorAll('[data-testid=docs-section-color] [data-hex], [data-testid=docs-section-color] [data-testid^=docs-swatch-]').length"
     )

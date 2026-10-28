@@ -90,7 +90,7 @@ at the end of the output; SKIP items (documented below) do not fail the run.
 
 | Item | Measured by |
 |---|---|
-| TOC lists all 10 sections | link count inside `docs-toc` |
+| TOC lists every getting-started + reference section (≥15) | link count inside `docs-toc`; labels include Server setup, CLI client, Claude Code, OpenCode, Pipelines |
 | Color section has a swatch for every token (≥15) | `[data-testid^=docs-swatch-]` / `[data-hex]` count |
 | Quickstart commands in mono code blocks (≥2 `pre`/`code`) | count + font-family probe |
 

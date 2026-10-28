@@ -33,6 +33,10 @@ describe("PublicNav (REQ-018)", () => {
       expect(link).toHaveStyle({ textDecoration: "none" });
       expect(link.getAttribute("style")).not.toContain("--color-accent");
     }
+    expect(screen.getByRole("link", { name: "GitHub" })).toHaveAttribute(
+      "href",
+      "https://github.com/conexaoelite/OpenSddRag",
+    );
   });
 
   it("renders the brand block: glyph square, wordmark and version chip", () => {

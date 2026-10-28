@@ -10,7 +10,7 @@ For build commands, ports and environment variables, refer to [`CLAUDE.md`](../C
 
 | Technology | Role |
 |---|---|
-| Python 3.12+ | Server language |
+| Python 3.11+ | Server language |
 | MCP SDK (`mcp.*`) | MCP protocol (tools/resources) |
 | Starlette + Uvicorn | HTTP/SSE transport and app mounting |
 | Typer | Administration CLI |

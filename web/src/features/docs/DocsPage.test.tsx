@@ -3,6 +3,7 @@ import { cleanup, render, screen, within } from "@testing-library/react";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import { routes } from "../../routes";
 import { DESIGN_TOKENS, type DesignToken } from "./designTokens";
+import { TOC_SECTIONS } from "./docsToc";
 
 function jsonResponse(status: number, body: unknown) {
   return { ok: status >= 200 && status < 300, status, json: async () => body } as unknown as Response;
@@ -20,18 +21,7 @@ afterEach(() => {
 
 // REQ-009 — docs page with sticky TOC of the agent-guide sections
 
-const SECTIONS = [
-  "Overview",
-  "Quickstart",
-  "SDD workflow",
-  "Artifact formats",
-  "Harness rules",
-  "Agent operating rules",
-  "Principles",
-  "Color",
-  "Typography",
-  "Components",
-];
+const SECTIONS = [...TOC_SECTIONS];
 
 describe("DocsPage (REQ-009)", () => {
   it("renders the sticky TOC with the guide sections and PublicNav", async () => {
@@ -94,9 +84,10 @@ describe("DocsPage design-system samples (D10 / REQ-009)", () => {
     expect(swatchCount).toBe(tokens.length);
   });
 
-  it("shows type samples in IBM Plex Sans and IBM Plex Mono and keeps the ten-section TOC", async () => {
+  it("shows type samples in IBM Plex Sans and IBM Plex Mono and lists every TOC section", async () => {
     await renderDocs();
     const toc = screen.getByTestId("docs-toc");
+    expect(toc.querySelectorAll("a")).toHaveLength(SECTIONS.length);
     for (const section of SECTIONS) {
       expect(within(toc).getAllByText(section).length).toBeGreaterThan(0);
     }
@@ -205,5 +196,59 @@ describe("DocsPage quickstart commands (D10 / REQ-009)", () => {
       const fonts = [block.style.fontFamily, pre?.style.fontFamily, `${block.className} ${pre?.className ?? ""}`].join(" ");
       expect(fonts, `code block for "${cmd}" must reference var(--font-mono)`).toMatch(/var\(--font-mono\)|\bmono\b/);
     }
+  });
+});
+
+describe("DocsPage getting-started (server, CLI, AI tools)", () => {
+  it("documents Docker server setup, dashboard login, CLI init, Claude Code and OpenCode", async () => {
+    await renderDocs();
+
+    const server = screen.getByTestId("docs-section-server-setup");
+    expect(server.textContent).toMatch(/docker compose up -d/);
+    expect(server.textContent).toMatch(/MANAGEMENT_API_TOKEN/);
+    expect(server.textContent).toMatch(/localhost:3001/);
+    expect(server.textContent).toMatch(/localhost:8000/);
+
+    const dashboard = screen.getByTestId("docs-section-dashboard");
+    expect(dashboard.textContent).toMatch(/123456/);
+    expect(dashboard.textContent).toMatch(/\/keys/);
+
+    const cli = screen.getByTestId("docs-section-cli-client");
+    expect(cli.textContent).toMatch(/npx opensddrag init/);
+    expect(cli.textContent).toMatch(/--tools claude,opencode/);
+
+    const claude = screen.getByTestId("docs-section-claude-code");
+    expect(claude.textContent).toMatch(/\.mcp\.json/);
+    expect(claude.textContent).toMatch(/Cursor/);
+    expect(claude.textContent).toMatch(/\/opsr:propose/);
+    expect(claude.textContent).toMatch(/Bearer <mcp-api-key>/);
+
+    const opencode = screen.getByTestId("docs-section-opencode");
+    expect(opencode.textContent).toMatch(/opencode\.json/);
+    expect(opencode.textContent).toMatch(/type": "remote"/);
+    expect(opencode.textContent).toMatch(/\.opencode\//);
+
+    const keys = screen.getByTestId("docs-section-api-keys");
+    expect(keys.textContent).toMatch(/opensddrag-server key create/);
+
+    const pipelines = screen.getByTestId("docs-section-pipelines");
+    expect(pipelines.textContent).toMatch(/register-flow/);
+    expect(pipelines.textContent).toMatch(/\/opsr:<flow>:<command>/);
+    expect(pipelines.textContent).toMatch(/add_rule currently accepts/);
+    expect(pipelines.textContent).toMatch(/Built-in pipeline: SDD/);
+    expect(pipelines.textContent).toMatch(/## Why/);
+    expect(pipelines.textContent).toMatch(/required_headings/);
+    expect(within(pipelines).getByTestId("docs-sdd-phases")).toBeInTheDocument();
+    expect(within(pipelines).getByTestId("docs-kind-proposal")).toBeInTheDocument();
+    expect(within(pipelines).getByTestId("docs-kind-spec")).toBeInTheDocument();
+    expect(within(pipelines).getByTestId("docs-kind-design")).toBeInTheDocument();
+    expect(within(pipelines).getByTestId("docs-kind-task")).toBeInTheDocument();
+    expect(within(pipelines).getByTestId("docs-kind-test")).toBeInTheDocument();
+    expect(screen.queryByTestId("docs-section-sdd-workflow")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("docs-section-artifact-formats")).not.toBeInTheDocument();
+
+    const harness = screen.getByTestId("docs-section-harness-rules");
+    expect(harness.textContent).toMatch(/tdd-first/);
+    expect(harness.textContent).toMatch(/add_rule/);
   });
 });

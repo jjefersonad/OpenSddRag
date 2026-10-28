@@ -4,20 +4,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-OpenSddRag is a **Spec-Driven Development (SDD) + Harness system** delivered as an MCP server backed by PostgreSQL/pgvector. It provides AI agents with persistent semantic memory (artifacts, execution traces, working context) and a structured workflow (propose → spec → design → tasks → apply → archive) for disciplined software development.
+OpenSddRag is a **Spec-Driven Development (SDD) + Harness system** delivered as an MCP server backed by PostgreSQL/pgvector. It provides AI agents with persistent semantic memory (artifacts, execution traces, working context) and structured **pipelines** (flows). SDD is the built-in pipeline (`propose → spec → design → tasks → apply → verify → archive`); other flows register their own kinds and lifecycle.
 
 The repo has two independent packages:
 - **`mcp-server/`** — Python MCP server (the core system)
 - **`client/`** — Node.js CLI that connects any project to a running MCP server
 
+Live operator docs: dashboard [http://localhost:3001/docs](http://localhost:3001/docs).
+
 ## Infrastructure
 
-Start the database and MCP server (SSE mode, port 8000):
+Start the database, MCP server (SSE, port 8000) and dashboard (port 3001):
 ```bash
 docker compose up -d
 ```
 
-Database runs on `localhost:54326` (pgvector/pg16). Copy `mcp-server/.env.example` to `mcp-server/.env` before running locally.
+Database runs on `localhost:54326` (pgvector/pg16). Dashboard login is `MANAGEMENT_API_TOKEN` (Compose default `123456`). MCP clients use a separate API key from `/keys`. Copy `mcp-server/.env.example` to `mcp-server/.env` before running locally.
 
 ## mcp-server (Python)
 
@@ -133,8 +135,10 @@ All vector columns use HNSW indexes (`vector_cosine_ops`). Embeddings are 384-di
 
 ### SDD artifact lifecycle
 
-SDD is the built-in `flow='sdd'`; other flows reuse the same substrate. Every
-piece of work flows through artifact types in dependency order:
+SDD is the built-in `flow='sdd'`; other flows reuse the same substrate. The
+proposal/spec/design/task/test headings below are **SDD kinds**, not a global
+schema — a custom pipeline declares its own kinds and `required_headings`.
+Every SDD change still flows through artifact types in dependency order:
 ```
 proposal → spec(s) → design → task(s) → [apply] → [verify] → [sync deltas] → archive
 ```

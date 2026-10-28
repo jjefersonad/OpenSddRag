@@ -1,5 +1,9 @@
 # OpenSddRag Web UI — Guide for AI Agents
 
+> **Live product docs:** [http://localhost:3001/docs](http://localhost:3001/docs) (and the repo `README.md`).
+> This file describes the **clickable prototype** (`OpenSddRag.dc.html`), not the running dashboard.
+> The app now includes API keys (`/keys`), multi-flow pipelines, and a getting-started guide on `/docs`.
+
 This file teaches an AI coding agent (Claude Code, Cursor, Copilot, etc.) how to understand, run, extend, and implement the OpenSddRag web prototype (`OpenSddRag.dc.html`) in production.
 
 ---

@@ -14,7 +14,7 @@ const MEMORY_LAYERS = [
   {
     tag: "artifacts · vector(384)",
     title: "Semantic memory",
-    desc: "Proposals, specs, designs and tasks — each embedded and searchable by meaning, not keywords.",
+    desc: "Proposals, specs, designs, tasks — and any pipeline's kinds — each embedded and searchable by meaning.",
     meta: "HNSW · vector_cosine_ops",
   },
   {
@@ -33,7 +33,7 @@ const MEMORY_LAYERS = [
 
 const TERMINAL_LINES: { prompt?: string; out?: string }[] = [
   { prompt: "/opsr:propose add-stripe-billing" },
-  { out: "✓ proposal.md created · 3 capabilities affected" },
+  { out: "✓ proposal created · 3 capabilities affected" },
   { prompt: "/opsr:spec" },
   { out: "✓ billing · webhooks specs generated" },
   { prompt: "/opsr:design && /opsr:tasks" },
@@ -127,9 +127,9 @@ export default function LandingPage() {
             and a disciplined workflow.
           </h1>
           <p style={{ fontSize: "17px", lineHeight: 1.6, color: "#9aa2a8", margin: "0 0 30px", maxWidth: "440px" }}>
-            An MCP server with semantic memory and a structured pipeline. Every change flows
-            through well-defined phases instead of ad-hoc edits — proposal, spec, design, tasks,
-            apply, verify, archive.
+            An MCP server with semantic memory and structured pipelines. SDD is built in
+            (proposal → spec → design → tasks → apply → verify → archive); you can register
+            other flows with their own phases and artifact kinds.
           </p>
           <div style={{ display: "flex", gap: "13px", alignItems: "center" }}>
             <Link
@@ -201,7 +201,7 @@ export default function LandingPage() {
             marginBottom: 16,
           }}
         >
-          The artifact lifecycle
+          Built-in SDD lifecycle
         </div>
         <div
           data-testid="landing-pipeline"

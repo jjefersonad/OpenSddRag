@@ -24,6 +24,8 @@ describe("LandingPage (REQ-011)", () => {
     render(<RouterProvider router={createMemoryRouter(routes, { initialEntries: ["/"] })} />);
     expect(await screen.findByTestId("landing-hero")).toBeInTheDocument();
     expect(screen.getByText(/persistent memory/i)).toBeInTheDocument();
+    expect(screen.getByText(/SDD is built in/i)).toBeInTheDocument();
+    expect(screen.getByText(/register[\s\S]*other flows/i)).toBeInTheDocument();
     // terminal demo
     expect(screen.getByTestId("landing-terminal")).toBeInTheDocument();
     expect(screen.getByText(/\/opsr:propose/)).toBeInTheDocument();

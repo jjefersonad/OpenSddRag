@@ -1,192 +1,66 @@
-# Testes E2E — Playwright + Page Object Model
+# Testing
 
-Guia de processo para escrever, rodar e manter os testes end-to-end do frontend.
+How to run the automated checks in this repository. There is no Playwright Page Object e2e suite for a separate `frontend/` app — the dashboard lives in `web/` and is covered by Vitest plus a visual fidelity script.
 
 ---
 
-## Pré-requisitos
+## Layers
 
-| Requisito | Detalhes |
-|-----------|----------|
-| Node.js ≥ 20 | Instalado com `nvm` ou via pacote |
-| `auth-service` rodando | `http://localhost:8080` |
-| `frontend` rodando | `http://localhost:5173` (dev) ou `npm run build && npm run preview` |
-| `research-service` | `http://localhost:8082` — necessário para testes do mapa exploratório |
-| Arquivo `e2e/.env.test` | Copiado de `e2e/.env.test.example` e preenchido |
+| Package | Runner | What it covers |
+|---|---|---|
+| `web/` | Vitest (`npm test`) | Routes, docs, landing, keys, dashboard components |
+| `mcp-server/` | pytest | Domain, repositories, MCP tools, management API |
+| `client/` | Node test (`npm test`) | CLI init, flow registration, templates |
+| `scripts/ui-fidelity/check.py` | Playwright for Python | Pixel/layout checklist vs `docs/ui/OpenSddRag.dc.html` |
 
-### Configurar credenciais
+---
+
+## Dashboard (Vitest)
 
 ```bash
-cp frontend/e2e/.env.test.example frontend/e2e/.env.test
-# Editar o arquivo com credenciais reais de teste
+cd web
+npm test
+# one file
+npx vitest run src/features/docs/DocsPage.test.tsx
 ```
 
-Variáveis obrigatórias:
-
-```env
-E2E_BASE_URL=http://localhost:5173
-E2E_ADMIN_EMAIL=admin@example.com
-E2E_ADMIN_PASSWORD=senha-do-admin
-E2E_USER_EMAIL=usuario@example.com
-E2E_USER_PASSWORD=senha-do-usuario
-```
+The app under test is public `/docs` and `/` without a token; protected routes stub `fetch`.
 
 ---
 
-## Como rodar os testes
+## MCP server (pytest)
 
 ```bash
-cd frontend
-
-# Rodar todos os testes em modo headless
-npm run test:e2e
-
-# Abrir a interface visual do Playwright (modo interativo)
-npm run test:e2e:ui
-
-# Rodar apenas um arquivo de spec
-npm run test:e2e -- auth.spec.ts
-
-# Ver o relatório HTML após a execução
-npx playwright show-report
+cd mcp-server
+pytest
+pytest tests/test_foo.py
+pytest -k "test_name"
 ```
 
-O relatório fica em `frontend/playwright-report/` (ignorado pelo git).
+Needs PostgreSQL/pgvector reachable (`DATABASE_URL`, Compose maps host port `54326`).
 
 ---
 
-## Estrutura de diretórios
+## CLI client
 
-```
-frontend/e2e/
-├── .env.test              # (gitignored) credenciais de teste
-├── .env.test.example      # template público — comitar alterações aqui
-├── .auth/
-│   └── admin.json         # (gitignored) storageState salvo pelo setup
-├── fixtures/
-│   ├── auth.setup.ts      # projeto "setup": login via UI → salva storageState
-│   └── municipios.geojson.ts  # fixture GeoJSON mínimo para testes do mapa
-├── page-objects/
-│   ├── base.page.ts       # BasePage — helpers compartilhados
-│   ├── login.page.ts      # LoginPage
-│   ├── home.page.ts       # HomePage
-│   ├── tematicas.page.ts  # TematicasPage
-│   ├── territorios.page.ts # TerritoriosPage
-│   ├── pesquisas.page.ts  # PesquisasPage
-│   ├── exploratory-map.page.ts # ExploratoryMapPage
-│   └── admin.page.ts      # AdminPage
-└── tests/
-    ├── auth.spec.ts
-    ├── home.spec.ts
-    ├── tematicas.spec.ts
-    ├── territorios.spec.ts
-    ├── pesquisas.spec.ts
-    ├── exploratory-map.spec.ts
-    └── admin.spec.ts
+```bash
+cd client
+npm test
 ```
 
 ---
 
-## Convenções de nomenclatura
+## UI fidelity (visual)
 
-| Artefato | Padrão | Exemplo |
-|----------|--------|---------|
-| Arquivo de Page Object | `<dominio>.page.ts` | `tematicas.page.ts` |
-| Classe de Page Object | `<Dominio>Page` | `TematicasPage` |
-| Arquivo de spec | `<dominio>.spec.ts` | `tematicas.spec.ts` |
-| Atributo `data-testid` | `kebab-case` descritivo | `btn-criar-tema`, `login-email` |
-| Prefixos de testid | `btn-` (botão), `tab-` (aba), `sidebar-item-`, `nav-item-` | |
+Measured checklist at 1440×900 against the prototype. Details: [`docs/ui/FIDELITY_CHECKLIST.md`](ui/FIDELITY_CHECKLIST.md).
 
----
-
-## Como criar um Page Object
-
-Crie um arquivo em `e2e/page-objects/<dominio>.page.ts`:
-
-```typescript
-import { BasePage } from './base.page'
-
-export class MinhaPage extends BasePage {
-  // Declare locators como propriedades usando getByTestId
-  readonly meuBotao = this.getByTestId('btn-minha-acao')
-  readonly meuModal = this.getByTestId('meu-modal')
-
-  // Método de navegação
-  async abrirModal(): Promise<void> {
-    await this.meuBotao.click()
-    await this.meuModal.waitFor({ state: 'visible' })
-  }
-
-  // Método de asserção
-  async assertConteudoVisivel(texto: string): Promise<void> {
-    await this.page.getByText(texto).waitFor({ state: 'visible' })
-  }
-}
+```bash
+docker compose up -d
+pip install playwright && playwright install chromium
+python3 scripts/ui-fidelity/check.py \
+  --app-url http://localhost:3001 \
+  --serve-prototype \
+  --token "$OPENSDDRAG_TOKEN"
 ```
 
-**Regras:**
-- Sempre estender `BasePage`
-- Locators simples → propriedades readonly (`this.getByTestId(...)`)
-- Locators dinâmicos → calcular no método (`this.getByTestId(`item-${id}`)`)
-- Métodos retornam `Promise<void>` e aguardam estabilidade da rede
-- Nunca usar `page.waitForTimeout()` — prefira `waitFor({ state: 'visible' })`
-
-### Adicionar `data-testid` ao componente
-
-Todo elemento interagido por testes deve ter `data-testid`:
-
-```tsx
-// Botão
-<Button data-testid="btn-criar-recurso" onClick={handleCreate}>
-  Criar
-</Button>
-
-// Input
-<input data-testid="recurso-nome" value={form.nome} onChange={...} />
-
-// Container de lista
-<div data-testid="recursos-list">
-  {items.map(...)}
-</div>
-```
-
----
-
-## Template de teste (`.spec.ts`)
-
-```typescript
-import { test, expect } from '@playwright/test'
-import { MinhaPage } from '../page-objects/minha.page'
-
-// Testes que precisam de sessão autenticada usam o storageState padrão
-// configurado em playwright.config.ts (via auth.setup.ts)
-test.describe('Minha Feature', () => {
-  test('deve fazer X com sucesso', async ({ page }) => {
-    const minha = new MinhaPage(page)
-    await minha.goto('/minha-rota')
-    await minha.abrirModal()
-    await expect(minha.meuModal).toBeVisible()
-  })
-})
-
-// Testes SEM autenticação: usar browser.newContext sem storageState
-test('acesso não autenticado redireciona para login', async ({ browser }) => {
-  const context = await browser.newContext({ storageState: undefined })
-  const page = await context.newPage()
-  await page.goto('/rota-protegida')
-  await expect(page).toHaveURL(/\/login/)
-  await context.close()
-})
-```
-
----
-
-## Checklist de PR
-
-Para todo PR que altera o frontend, verificar antes de solicitar review:
-
-- [ ] Novos elementos interativos têm `data-testid` no formato `kebab-case`
-- [ ] Se adicionou uma nova rota/página: criou ou atualizou o Page Object correspondente
-- [ ] Se adicionou uma nova página: criou pelo menos um smoke test em `e2e/tests/`
-- [ ] Os testes existentes continuam passando (`npm run test:e2e`)
-- [ ] `data-testid` adicionados são únicos na página (evitar duplicatas no mesmo contexto)
+`OPENSDDRAG_TOKEN` is `MANAGEMENT_API_TOKEN` (Compose default `123456`), not an MCP API key. Default dashboard origin is `http://localhost:3001`; Vite on `:5173` is blocked by CORS unless `WEB_ORIGIN` matches.

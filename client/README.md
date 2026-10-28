@@ -2,7 +2,13 @@
 
 CLI client to connect any project to the [OpenSddRag](https://github.com/conexaoelite/OpenSddRag) SDD+Harness MCP server.
 
-OpenSddRag implements **Spec-Driven Development (SDD)** — a structured workflow where every feature flows through `propose → spec → design → tasks → apply → archive`, backed by a PostgreSQL/pgvector semantic memory store. This CLI wires your project's AI tools to that server in seconds.
+OpenSddRag implements **Spec-Driven Development (SDD)** plus extra **pipelines** (called *flows*). SDD is the built-in pipeline:
+
+```
+propose → spec → design → tasks → apply → verify → sync → archive
+```
+
+Each pipeline is a named pack of artifact kinds, optional lifecycle phases (shown on the dashboard), harness triggers, skills, and slash commands. You can install extra pipelines alongside SDD, or register your own — no server code change. This CLI wires your project's AI tools to that server in seconds. See [Flows (pipelines)](#flows-pipelines).
 
 ## Prerequisites
 
@@ -23,17 +29,20 @@ opensddrag init
 ## Quick Start
 
 ```bash
-# 1. Start the OpenSddRag server (Docker)
-docker compose up -d          # runs on http://localhost:8000
+# 1. Start the stack (DB :54326, MCP :8000, dashboard :3001)
+docker compose up -d
 
-# 2. Inside your project, connect it
+# 2. Create an MCP API key (dashboard /keys, or opensddrag-server key create)
+#    Dashboard login is MANAGEMENT_API_TOKEN (Compose default: 123456) — not the MCP key.
+
+# 3. Inside your project, connect it
 cd my-project
-npx opensddrag init
+npx opensddrag init --server http://localhost:8000 --api-key <key> --tools claude,opencode --yes
 
-# 3. Open the project in Claude Code — the MCP server is ready
+# 4. Reload Claude Code, OpenCode, or Cursor — the MCP server is ready
 ```
 
-The `init` command registers your project on the server, writes MCP config files, installs SDD slash commands, and appends a section to `CLAUDE.md`.
+The `init` command registers your project on the server, writes MCP config files, installs slash commands for the selected pipeline(s) (SDD by default), and appends a section to `CLAUDE.md`.
 
 ## Commands
 
@@ -47,9 +56,12 @@ Options:
   --project <slug>    Project slug  (default: directory name)
   --name <name>       Project display name
   --api-key <key>     API key for password-protected servers
-  --tools <list>      AI tools to configure: claude, opencode  (default: ask)
+  --tools <list>      AI tools to configure: claude, opencode  (default: ask). Cursor reads the same `.mcp.json` as Claude Code.
+  --flow <slugs>      Pipelines to install, comma-separated  (default: sdd)
   --yes               Skip all confirmation prompts
 ```
+
+Without `--flow`, `--yes` installs **SDD only**. Interactive init lets you pick every pipeline the CLI ships.
 
 **Examples**
 
@@ -68,21 +80,24 @@ OPENSDDRAG_SERVER_URL=http://mcp.internal:8000 OPENSDDRAG_API_KEY=sk-... npx ope
 
 # Configure only OpenCode (skip Claude Code)
 npx opensddrag init --tools opencode
+
+# SDD plus another shipped pipeline
+npx opensddrag init --flow sdd,docs --yes
 ```
 
 **What gets created in your project**
 
 | Path | Purpose |
 |---|---|
-| `.mcp.json` | Claude Code MCP server entry (`type: http`) |
+| `.mcp.json` | Claude Code and Cursor MCP server entry (`type: http`) |
 | `opencode.json` | OpenCode MCP server entry (only with `--tools opencode`) |
-| `.claude/skills/opensddrag-*/SKILL.md` | One skill file per SDD command |
+| `.claude/skills/opensddrag-*/SKILL.md` | One skill file per command (`opensddrag-<flow>-*` for non-SDD pipelines) |
 | `.claude/skills/opensddrag-harness/SKILL.md` | Harness rule management skill |
 | `.agents/skills/opensddrag-*/SKILL.md` | Same skills for agent-native tooling |
 | `.agents/skills/opensddrag-harness/SKILL.md` | Same harness skill for agent-native tooling |
 | `.opencode/skills/opensddrag-*/SKILL.md` | OpenCode-native skills (when selected) |
 | `.opencode/skills/opensddrag-harness/SKILL.md` | OpenCode-native harness skill (when selected) |
-| `.claude/commands/opsr/*.md` | Claude Code slash commands |
+| `.claude/commands/opsr/*.md` | Claude Code slash commands (SDD: `/opsr:<command>`; other pipelines: `/opsr:<flow>:<command>` under `opsr/<flow>/`) |
 | `.opencode/commands/opsr/*.md` | OpenCode slash commands (when selected) |
 | `CLAUDE.md` | OpenSddRag section appended (or file created) |
 | `opensddrag.yaml` | Local project marker (`project` + `server`) |
@@ -137,9 +152,84 @@ npx opensddrag status
 
 ---
 
+## Flows (pipelines)
+
+A **flow** is a named pipeline: artifact kinds, optional `lifecycle` phases (the dashboard derives progress from these — new pipelines render without UI changes), harness triggers, skills, and slash commands.
+
+| | SDD (built-in) | Any other pipeline |
+|---|---|---|
+| Install | `opensddrag init` (default) | `opensddrag init --flow sdd,<slug>` |
+| Slash commands | `/opsr:propose`, `/opsr:spec`, … | `/opsr:<slug>:<command>` |
+| Skills | `opensddrag-<command>` | `opensddrag-<slug>-<command>` |
+| Server registration | Seeded by the MCP server | `init` calls `register_flow`; or register a manifest yourself |
+
+MCP tools take an optional `flow` argument (defaults to the project's `default_flow`, else `sdd`). Artifacts from different pipelines can still link to each other. Validation is by `(flow, kind)`: built-in SDD rules for `spec`/`task`, otherwise the kind's `required_headings` / `required_metadata_keys`, otherwise a structural fallback.
+
+Workflow and artifact formats are **per pipeline**. SDD's propose→spec→design… sequence and its heading contracts apply only to `flow=sdd`. A custom pipeline replaces both with its own `lifecycle` and kind rules (the dashboard **Pipelines** page documents the same model).
+
+### Built-in SDD (formats)
+
+| Kind | Headings / contract |
+|---|---|
+| `proposal` | `## Why`, `## What Changes`, `## Capabilities`, `## Impact` |
+| `spec` | `## Purpose`, `## Requirements`, `#### Scenario:` WHEN/THEN |
+| `design` | `## Decisions`, `## Risks / Trade-offs` |
+| `task` | `## Goal`, `## Acceptance Criteria`, `## Dependencies` |
+| `test` | `level` = scenario \| unit; `test_status` = pending → failing → passing |
+
+### Create a custom pipeline
+
+Two pieces: a **manifest** the server understands, and (optionally) skills/commands the CLI installs into the target project.
+
+**1. Register the pipeline with the MCP server** — JSON, snake_case. The slug must be kebab-case. `lifecycle` is optional; when present, the dashboard shows those phases instead of hard-coding SDD.
+
+```json
+{
+  "flow": "docs",
+  "kinds": [
+    { "kind": "brief" },
+    { "kind": "draft", "required_headings": ["## Audience"] },
+    { "kind": "publish" }
+  ],
+  "lifecycle": [
+    { "name": "Brief", "kinds": ["brief"] },
+    { "name": "Draft", "kinds": ["draft"] },
+    { "name": "Publish", "kinds": ["publish"] }
+  ],
+  "harness_triggers": ["on_draft", "on_publish"],
+  "skills": ["opensddrag-docs-draft", "opensddrag-docs-publish"],
+  "commands": [
+    { "name": "draft" },
+    { "name": "publish" }
+  ],
+  "claude_md_section": "## OpenSddRag — docs pipeline\n\n`/opsr:docs:draft` → `/opsr:docs:publish`\n"
+}
+```
+
+Register it with the MCP tool `register_flow` (from an agent session) or the server CLI:
+
+```bash
+opensddrag-server register-flow ./docs-manifest.json
+```
+
+After that, `create_artifact` / `validate_artifact` accept the new kinds, and the dashboard renders the declared phases. No server code change is required.
+
+**2. Ship skills and commands with the CLI** (only if you maintain this package or a fork). Add a pack at `src/templates/flows/<slug>/`:
+
+```
+src/templates/flows/<slug>/
+  manifest.js      # { flow, kinds, lifecycle, harnessTriggers, skills, commands, claudeMdSection }
+  skills/          # SKILL.md contents
+  commands/        # slash-command prompts
+```
+
+`opensddrag init --flow <slug>` then writes those files into the target project and registers the manifest. Non-SDD commands land under `.claude/commands/opsr/<slug>/` and are invoked as `/opsr:<slug>:<command>`.
+
+---
+
 ## SDD Slash Commands
 
-After `init`, the following slash commands are available inside Claude Code (prefix `/opsr:`):
+After `init` (SDD is the default pipeline), the following slash commands are available inside Claude Code (prefix `/opsr:`). Commands from other pipelines use `/opsr:<flow>:<command>` instead.
 
 | Command | When to use |
 |---|---|
@@ -160,7 +250,7 @@ After `init`, the following slash commands are available inside Claude Code (pre
 
 ## Harness
 
-The Harness is a rule-gate layer built on top of the SDD workflow. It lets you define persistent, per-project behavioral rules that are automatically injected into every agent session and enforced at specific SDD phase gates.
+The Harness is a per-project rule-gate layer. Rules are injected into every agent session and enforced at phase gates. SDD ships with `on_spec` / `on_apply` / `on_verify` / `on_archive`; `add_rule` currently accepts those plus `always`.
 
 **How it works:**
 - Rules are stored in the MCP server's database, scoped to your project.
@@ -206,11 +296,10 @@ The Harness is a rule-gate layer built on top of the SDD workflow. It lets you d
 
 ### Built-in rules
 
-Two rules are seeded by `opensddrag-server init` into every project:
+`opensddrag init` (and `opensddrag-server init` for existing projects) seeds **`tdd-first`** into every project:
 
 | Rule | Trigger | Severity | Purpose |
 |---|---|---|---|
-| `contract-change-map-all-implementers` | `always` | `error` | When a change alters a port/interface/contract, map every implementer (Pg adapter, in-memory adapter, composition root, mocks). Prevents deploy-time `TypeError` from missed adapters. |
 | `tdd-first` | `on_apply` | `error` | Apply is test-first (RED → GREEN → REFACTOR) per testable unit. Stack-agnostic — applies to pytest, vitest, jest, go test. Tasks with `metadata.test_exempt=true` plus a stated reason are exempt. |
 
 ### TDD discipline and test artifacts
@@ -242,7 +331,7 @@ cd OpenSddRag
 docker compose up -d
 ```
 
-The server starts on `http://localhost:8000`. The database runs on `localhost:54326`.
+This starts PostgreSQL/pgvector on `localhost:54326`, the MCP + management API on `http://localhost:8000`, and the dashboard on [http://localhost:3001](http://localhost:3001). Dashboard login is `MANAGEMENT_API_TOKEN` (Compose default `123456`) — not an MCP API key.
 
 **Local (development)**
 
@@ -250,9 +339,11 @@ The server starts on `http://localhost:8000`. The database runs on `localhost:54
 cd mcp-server
 cp .env.example .env
 uv pip install -e .
-opensddrag init          # run migrations + seed global SDD skills
-opensddrag server start --transport sse --port 8000
+opensddrag-server init          # run migrations + seed global SDD skills
+opensddrag-server server start --transport sse --port 8000
 ```
+
+The npm CLI is `opensddrag`. The Python server CLI is `opensddrag-server`. Do not mix them.
 
 ## License
 

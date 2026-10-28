@@ -1,41 +1,30 @@
-import { type ComponentType, type CSSProperties } from "react";
+import { type ComponentType } from "react";
 import PublicNav from "../../components/PublicNav";
 import { DESIGN_TOKENS, TYPE_SCALE, type TypeScaleSample } from "./designTokens";
-
-const TOC_SECTIONS = [
-  "Overview",
-  "Quickstart",
-  "SDD workflow",
-  "Artifact formats",
-  "Harness rules",
-  "Agent operating rules",
-  "Principles",
-  "Color",
-  "Typography",
-  "Components",
-] as const;
-
-type DocsSection = (typeof TOC_SECTIONS)[number];
+import { TOC_SECTIONS, slugify, type DocsSection } from "./docsToc";
+import {
+  ApiKeysBody,
+  ClaudeCodeBody,
+  CliClientBody,
+  DashboardBody,
+  OpenCodeBody,
+  PipelinesBody,
+  QuickstartBody,
+  ServerSetupBody,
+  HarnessBody,
+} from "./gettingStarted";
 
 const SECTION_BODIES: Partial<Record<DocsSection, string[]>> = {
   Overview: [
-    "OpenSddRag is an MCP server with persistent semantic memory and a strict Spec-Driven Development pipeline. Every change is a named change that moves through ordered phases, each producing a versioned, embedded artifact.",
+    "OpenSddRag is an MCP server with persistent semantic memory. SDD is the built-in pipeline: a named change moves through ordered phases, each producing a versioned, embedded artifact. You can register extra pipelines (flows) with their own kinds and lifecycle.",
     "There are three memory layers — semantic (artifacts), episodic (execution traces), working context (sessions + harness rules). Query before you create, so you don't duplicate capabilities or reopen settled decisions.",
-  ],
-  "SDD workflow": [
-    "propose → spec → design → tasks → apply → verify → sync → archive.",
-    "Run the phases in order. Each command reads the previous artifact from memory and writes the next one. Don't skip phases.",
-  ],
-  "Artifact formats": [
-    "proposal — ## Why, ## What Changes, ## Capabilities, ## Impact. spec — ## Requirements with #### Scenario: WHEN/THEN blocks.",
-    "design — ## Decisions with chosen approach and rejected alternatives; ## Risks / Trade-offs. task — ## Goal, ## Acceptance Criteria, ## Dependencies.",
+    "This page is the getting-started guide: stand up the server, connect the CLI, wire Claude Code, Cursor and OpenCode, then pipelines (SDD is the built-in one — others declare their own phases and artifact kinds) and the design-system tokens.",
   ],
   "Harness rules": [
-    "Rules are persisted per project with trigger (always/on_spec/on_apply/on_verify/on_archive) and severity (error/warning/info). Error-severity rules block the phase; warnings advise.",
-    "Disable via soft-delete (enabled=false): the rule leaves default listings but can be restored.",
+    "Rules are persisted per project with a trigger, category, severity and a plain-language instruction. Error-severity rules block the gate; warnings advise. Disable via soft-delete (enabled=false).",
   ],
   "Agent operating rules": [
-    "Read the workflow commands before acting; consult specs with semantic search before creating anything; never modify artifacts outside the phase driving them.",
+    "Read the active pipeline's commands before acting. Search semantic memory before creating artifacts so you do not duplicate work or reopen settled decisions. Never modify artifacts outside the phase that owns them. Follow always-injected harness rules at session start.",
   ],
   Principles: [
     "Query before you create. Memory is shared, not personal. Artifacts are durable decisions — traceability over convenience.",
@@ -53,21 +42,6 @@ const SECTION_BODIES: Partial<Record<DocsSection, string[]>> = {
   ],
 };
 
-const QUICKSTART_COMMANDS = [
-  {
-    command: "docker compose up -d",
-    description: "Start the database (pgvector/pg16), MCP server and web dashboard.",
-  },
-  {
-    command: "opensddrag-server init",
-    description: "Run migrations and seed the global SDD skills.",
-  },
-  {
-    command: "node bin/opensddrag.js init",
-    description: "Connect a project to the server.",
-  },
-];
-
 const SEVERITY_SAMPLES = [
   { name: "error", color: "var(--color-danger)", background: "rgba(248, 113, 113, 0.1)", borderColor: "rgba(248, 113, 113, 0.25)" },
   { name: "warning", color: "var(--color-warn)", background: "rgba(251, 191, 36, 0.1)", borderColor: "rgba(251, 191, 36, 0.25)" },
@@ -82,27 +56,14 @@ const PHASE_SAMPLES = [
   { label: "archive", dotColor: "var(--color-text-tertiary)" },
 ] as const;
 
-const CODE_BLOCK_STYLE: CSSProperties = {
-  margin: 0,
-  padding: "10px 12px",
-  fontFamily: "var(--font-mono)",
-  fontSize: "12px",
-  color: "var(--color-text-primary)",
-  background: "var(--color-inset)",
-  border: "1px solid var(--color-border)",
-  borderRadius: "8px",
-  overflowX: "auto",
-};
-
-/** Docs & design-system page (REQ-009): sticky TOC with the agent-guide
- *  sections plus the §8 design-system reference — color swatches, type scale
- *  samples and live component samples driven by designTokens.ts. Public. */
+/** Docs page: getting-started (server, CLI, Claude Code, OpenCode) plus the
+ *  agent-guide sections and the §8 design-system reference. Public. */
 export default function DocsPage() {
   return (
     <div style={{ minHeight: "100%", background: "var(--color-page)", color: "var(--color-text)" }}>
       <PublicNav />
       <div style={{ display: "grid", gridTemplateColumns: "240px 1fr", gap: "24px", maxWidth: "1180px", margin: "0 auto", padding: "32px" }}>
-        <nav data-testid="docs-toc" aria-label="Docs sections" style={{ position: "sticky", top: "24px", alignSelf: "start", display: "flex", flexDirection: "column", gap: "6px" }}>
+        <nav data-testid="docs-toc" aria-label="Docs sections" style={{ position: "sticky", top: "24px", alignSelf: "start", display: "flex", flexDirection: "column", gap: "6px", maxHeight: "calc(100vh - 48px)", overflowY: "auto" }}>
           <div style={{ fontFamily: "var(--font-mono)", fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.08em", color: "#5b6469", marginBottom: "8px" }}>
             On this page
           </div>
@@ -119,10 +80,10 @@ export default function DocsPage() {
 
         <main style={{ display: "flex", flexDirection: "column", gap: "40px" }}>
           <div>
-            <h1 style={{ margin: "0 0 12px", fontSize: "24px" }}>Docs &amp; design system</h1>
+            <h1 style={{ margin: "0 0 12px", fontSize: "24px" }}>Docs</h1>
             <p style={{ color: "var(--color-text-secondary)", lineHeight: 1.6 }}>
-              The agent guide and the §8 design-system reference, mirrored from{" "}
-              <code style={{ fontFamily: "var(--font-mono)", fontSize: "12px" }}>docs/ui/AGENT_GUIDE.md</code>.
+              Set up the server, connect a project with the CLI, wire Claude Code, Cursor and OpenCode, then pipelines
+              (including the built-in SDD flow) and design-system tokens.
             </p>
           </div>
           {TOC_SECTIONS.map((section) => (
@@ -159,27 +120,18 @@ function SectionBody({ section }: { section: DocsSection }) {
 
 const SECTION_EXTRAS: Partial<Record<DocsSection, ComponentType>> = {
   Quickstart: QuickstartBody,
+  "Server setup": ServerSetupBody,
+  Dashboard: DashboardBody,
+  "CLI client": CliClientBody,
+  "Claude Code": ClaudeCodeBody,
+  OpenCode: OpenCodeBody,
+  "API keys": ApiKeysBody,
+  Pipelines: PipelinesBody,
+  "Harness rules": HarnessBody,
   Color: ColorSwatches,
   Typography: TypeSamples,
   Components: ComponentSamples,
 };
-
-function QuickstartBody() {
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-      {QUICKSTART_COMMANDS.map((entry) => (
-        <div key={entry.command} style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-          <pre style={CODE_BLOCK_STYLE}>
-            <code style={{ fontFamily: "var(--font-mono)" }}>{entry.command}</code>
-          </pre>
-          <p style={{ color: "var(--color-text-secondary)", fontSize: "13.5px", lineHeight: 1.5, margin: 0 }}>
-            {entry.description}
-          </p>
-        </div>
-      ))}
-    </div>
-  );
-}
 
 function ColorSwatches() {
   return (
@@ -281,8 +233,4 @@ function ComponentSamples() {
       </div>
     </div>
   );
-}
-
-function slugify(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9]+/g, "-");
 }

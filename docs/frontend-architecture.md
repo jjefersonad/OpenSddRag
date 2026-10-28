@@ -1,221 +1,71 @@
-# Arquitetura do Frontend
+# Frontend Architecture
 
-Referência técnica da aplicação `frontend/` — React/Vite/TypeScript.
-Para tokens e componentes visuais, consultar [`design_system/DESIGN_SYSTEM.md`](../design_system/DESIGN_SYSTEM.md).
-Para comandos de build, portas e variáveis de ambiente, consultar [`CLAUDE.md`](../CLAUDE.md).
+Technical reference for the dashboard in `web/` — a Vite + React SPA that talks to the management REST API (`/api/v1`), not to MCP.
+
+Live getting-started and design tokens: [http://localhost:3001/docs](http://localhost:3001/docs). For ports, env and CORS, see [`CLAUDE.md`](../CLAUDE.md) and [`mcp-server/.env.example`](../mcp-server/.env.example).
 
 ---
 
 ## Stack
 
-| Tecnologia | Papel |
+| Technology | Role |
 |---|---|
-| React | UI framework |
-| Vite |  Build tool e dev server |
-| TypeScript | Tipagem estática |
-| Tailwind CSS | Estilos via tokens |
-| Axios | Clientes HTTP |
-| Zustand | Gerenciamento de estado |
-| React Router | Roteamento SPA |
-| Socket.io-client | WebSocket |
-| Headless UI | Componentes acessíveis sem estilo |
+| React 19 | UI |
+| Vite 7 | Dev server and production build |
+| TypeScript | Static typing (`tsc --noEmit` in `npm run build`) |
+| React Router 7 | SPA routes |
+| CSS variables | Design tokens in `web/src/styles/tokens.css` (inline styles in components) |
+| Vitest + Testing Library | Unit / component tests |
+| nginx (Compose `web` image) | Serves `dist/` on port 3001 |
+
+There is no Tailwind, Axios, Zustand, or Socket.io in this app. Fetch goes through `web/src/api/client.ts`.
 
 ---
 
-## Estrutura de Diretórios
+## Directory structure
 
 ```
-frontend/src/
-├── pages/           # Telas da aplicação (um arquivo por rota)
-├── components/      # Componentes React organizados por domínio
-│   ├── common/      # Componentes genéricos reutilizáveis (Button, Input, Modal, Badge)
-│   ├── home/        # Componentes da tela inicial
-│   ├── layout/      # Estrutura de página (Layout, AdminLayout, Sidebar, TopBar)
-│   ├── logos/       # SVGs de logo como componentes React
-│   └── ui/          # Primitivos de UI (Icon)
-├── hooks/           # Custom hooks — wrappers sobre stores e lógica reutilizável
-├── services/        # Clientes HTTP por domínio (funções puras, sem estado)
-├── stores/          # Estado global (Zustand)
-├── lib/             # Infraestrutura: clientes Axios, WebSocket, utilitários
-├── types/           # Tipos TypeScript por domínio
-├── tokens/          # Tokens de design espelhados do design_system
-└── routes/          # Definição de rotas React Router
+web/src/
+├── api/              # /api/v1 client (Bearer management token) + resource modules
+├── features/         # Screens by domain (landing, docs, auth, projects, keys, …)
+├── components/       # Shared chrome (PublicNav, ProtectedRoute, ui/)
+├── hooks/            # Data hooks over api/
+├── lib/              # Path helpers
+├── styles/           # tokens.css
+├── routes.tsx        # Route table
+└── App.tsx           # Authenticated shell
 ```
+
+**Dependency rule:** `features/` render; `hooks/` fetch; `api/` is the only HTTP layer. Pages do not call `fetch` directly.
 
 ---
 
-## Camadas e Responsabilidades
+## Auth and API
 
-```
-┌──────────────────────────────────────────────────────────┐
-│  pages/          Telas — orquestram componentes e hooks  │
-└───────────────────────────┬──────────────────────────────┘
-                            │ usa
-┌───────────────────────────▼──────────────────────────────┐
-│  components/     Renderização — recebem props, sem fetch │
-│  hooks/          Lógica reutilizável — wrappam stores    │
-└──────────────┬──────────────────────┬────────────────────┘
-               │ chama                │ lê/escreve
-┌──────────────▼──────────┐  ┌────────▼───────────────────┐
-│  services/              │  │  stores/                   │
-│  HTTP por domínio       │  │  Estado global (Zustand)   │
-└──────────────┬──────────┘  └────────────────────────────┘
-               │ usa
-┌──────────────▼──────────────────────────────────────────┐
-│  lib/api.ts  lib/authApi.ts   lib/socket.ts             │
-│  Infraestrutura HTTP e WebSocket                        │
-└─────────────────────────────────────────────────────────┘
-```
-
-**Regra de dependência:** camadas superiores dependem das inferiores; nunca o contrário.
-`pages` nunca importam de outros `pages`. `services` nunca importam de `stores` ou `hooks`.
-
-**Onde colocar o quê:**
-- Novo componente genérico → `components/common/`
-- Novo componente específico de domínio → `components/<domínio>/`
-- Nova chamada HTTP → `services/<domínio>.service.ts`
-- Novo estado global → `stores/<domínio>.store.ts` + hook em `hooks/use<Domínio>.ts`
+- Login stores `MANAGEMENT_API_TOKEN` in `localStorage` (`opensddrag.management_token`).
+- Every `/api/v1` call sends `Authorization: Bearer <token>`. HTTP 401 clears the token and routes to `/login`.
+- `VITE_API_URL` defaults to `http://localhost:8000/api/v1`. Compose `WEB_ORIGIN` must match the dashboard origin (`http://localhost:3001`) or the browser is blocked by CORS.
+- MCP API keys (`/keys`) are a different secret from the dashboard token. The dashboard is not an MCP client.
 
 ---
 
-## Gerenciamento de Estado (Zustand)
+## Public vs protected routes
 
-### Stores existentes
-
-| Store | Arquivo | Persiste? | Responsabilidade |
-|---|---|---|---|
-| `useAuthStore` | `stores/auth.store.ts` | Sim (localStorage) | Usuário autenticado, tokens JWT |
-
-### Padrão: hook-over-store
-
-Componentes nunca importam stores diretamente. Cada store tem um hook correspondente em `hooks/` que expõe a API pública:
-
-```
-useAuthStore (store)  →  useAuth (hook)  →  componentes
-```
-
-`useAuth` adiciona computed values como `isAdmin`, `isManager`, `hasPesquisaAccess` por cima dos dados brutos do store.
-
-### Acesso fora do React tree
-
-Interceptors Axios e código fora de componentes devem acessar o store via `.getState()`:
-
-```ts
-// correto — fora do React tree (ex: interceptor)
-const token = useAuthStore.getState().token
-useAuthStore.getState().logout()
-```
-
----
-
-## Clientes HTTP (Axios)
-
-### `lib/api.ts`
-
-- **Base URL:** `VITE_API_URL` (padrão: `http://localhost:8081/api/v1`)
-- **Usado por:** `services/municipio.service.ts`, `services/pesquisa.service.ts`, `services/regiao.service.ts`
-- **Interceptor de request:** injeta `Authorization: Bearer <token>` automaticamente
-- **Auto-refresh JWT:** em resposta 401, tenta refresh via `useAuthStore.refreshAccessToken()`. Requisições concorrentes são enfileiradas e retomadas após o refresh. Se o refresh falhar → `logout()` + redirect para `/login`
-
-### `lib/authApi.ts` — auth-service
-
-- **Base URL:** `VITE_AUTH_API_URL` (padrão: `http://localhost:8090/api/v1`)
-- **Usado por:** `stores/auth.store.ts` (login, logout, refresh-token)
-- **Mesmo mecanismo de auto-refresh**, mas ignora URLs `/auth/refresh-token` e `/auth/login` para evitar loop infinito
-
-### Adicionando um novo serviço de backend
-
-Se um novo serviço (ex: research-service) precisar de cliente próprio, criar `lib/researchApi.ts` no mesmo padrão de `api.ts`, configurar `VITE_RESEARCH_API_URL` e adicionar o serviço correspondente em `services/`.
-
----
-
-## Roteamento
-
-Rotas definidas em `routes/index.tsx` com React Router v6.
-
-### Tipos de rota
-
-```tsx
-// Pública
-<Route path="/login" element={<LoginPage />} />
-
-// Protegida por autenticação
-<Route path="/territorios" element={
-  <ProtectedRoute>
-    <TerritoriosPage />
-  </ProtectedRoute>
-} />
-
-// Protegida por permissão (role)
-<Route path="/pesquisa" element={
-  <ProtectedRoute>
-    <PermissionRoute allowed={!!hasPesquisaAccess}>
-      <PesquisaPage />
-    </PermissionRoute>
-  </ProtectedRoute>
-} />
-
-// Admin (autenticação + layout diferente)
-<Route path="/admin/territorios" element={
-  <ProtectedRoute>
-    <AdminLayout>
-      <TerritoriosPage />
-    </AdminLayout>
-  </ProtectedRoute>
-} />
-```
-
-| Wrapper | Arquivo | Comportamento se não autorizado |
-|---|---|---|
-| `ProtectedRoute` | `components/ProtectedRoute.tsx` | Redireciona para `/login` |
-| `PermissionRoute` | `components/PermissionRoute.tsx` | Renderiza fallback (sem redirect) |
-| `AdminLayout` | `components/layout/AdminLayout.tsx` | Layout com sidebar admin |
-
-Rotas `*` (not found) redirecionam para `/`.
-
----
-
-## Autenticação e RBAC
-
-### Fluxo JWT
-
-```
-1. Login    → POST /auth/login via authApi → access_token + refresh_token
-2. Persist  → Zustand persist salva tokens no localStorage (chave: "auth-storage")
-3. Request  → api.ts injeta Bearer token em cada chamada
-4. Expirou  → Interceptor captura 401 → POST /auth/refresh-token → novo token
-5. Falhou   → logout() → limpa store + localStorage → redirect /login
-```
-
-### Roles
-
-Acessados exclusivamente via `useAuth()`:
-
-```ts
-const { isAdmin, isManager, hasPesquisaAccess } = useAuth()
-```
-
-| Computed | Roles que satisfazem |
+| Path | Auth |
 |---|---|
-| `isAdmin` | `admin` |
+| `/`, `/docs`, `/login` | Public |
+| `/projects`, `/p/:slug`, `/p/:slug/c/:change`, `/keys` | Protected |
 
-**Regra:** componentes nunca leem roles de `useAuthStore` diretamente — sempre via `useAuth()`.
+Pipelines (flows) drive the phase strip from `GET /api/v1/flows` — a new registered flow renders without UI changes.
 
 ---
 
-## Integração com Design System
+## Local run
 
-O `design_system/` é um app Vite separado que serve como **playground de referência** — não é importado como dependência pelo frontend.
+```bash
+# Full stack (recommended)
+docker compose up -d          # dashboard http://localhost:3001
 
-O frontend consome o design system via espelhamento de tokens:
-
+# Vite only (CORS: WEB_ORIGIN must allow this origin, or use --port 3001)
+cd web && npm install && npm run dev
 ```
-design_system/src/data.ts        ← fonte primária dos tokens
-        ↕  (manter em sync manual)
-frontend/src/tokens/colors.ts    ← espelho usado pelo frontend
-frontend/tailwind.config.js      ← aplica os tokens via Tailwind
-```
-
-**Ao alterar ou adicioanr qualquer token de cor, atualizar AMBOS os arquivos.**
-
-Para referência de componentes, padrões visuais e especificações de design, consultar [`./ui/AGENT_GUIDE.md`](./ui/AGENT_GUIDE.md).

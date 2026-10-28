@@ -50,7 +50,7 @@ export function flowCommandFolder(flow, rawFolder) {
 
 /** Convert a client (camelCase) manifest to the server's snake_case shape. */
 export function toServerManifest(manifest) {
-  return {
+  const payload = {
     flow: manifest.flow,
     kinds: manifest.kinds || [],
     harness_triggers: manifest.harnessTriggers || [],
@@ -58,6 +58,8 @@ export function toServerManifest(manifest) {
     commands: manifest.commands || [],
     claude_md_section: manifest.claudeMdSection || "",
   };
+  if (manifest.lifecycle) payload.lifecycle = manifest.lifecycle;
+  return payload;
 }
 
 /**
