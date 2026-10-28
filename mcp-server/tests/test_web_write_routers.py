@@ -87,6 +87,9 @@ class StubService:
         rules = list(self.rules.get(slug, []))
         return rules if enabled_all else [r for r in rules if r["enabled"]]
 
+    async def list_projects(self):
+        return list(self.projects.values())
+
     # ── artifacts ──
     async def create_artifact(self, slug, name, type_, content, metadata):
         if any(a["name"] == name and a["project_slug"] == slug for a in self.artifacts.values()):
@@ -417,6 +420,29 @@ def test_create_and_revoke_api_key() -> None:
 
     unknown = client.post("/api/v1/keys/nope/revoke", headers=_auth())
     assert unknown.status_code == 404
+    assert unknown.json()["error"]["code"] == "NOT_FOUND"
+
+
+def test_keys_resource_requires_management_token_and_mounts() -> None:
+    """web-api-management REQ-012: the keys resource sits behind the
+    management-token dependency (401 without executing the handler) and
+    is mounted in the same route table as /api/v1/projects (200, not
+    404) — REQ-001 "Keys routes are mounted".
+    """
+    svc = StubService()
+    svc.projects = {"demo": {"id": "1", "name": "Demo", "slug": "demo", "description": ""}}
+    client = _client(svc)
+
+    anon = client.get("/api/v1/keys")
+    assert anon.status_code == 401
+    assert anon.json()["error"]["code"] == "UNAUTHORIZED"
+
+    authed_keys = client.get("/api/v1/keys", headers=_auth())
+    assert authed_keys.status_code == 200
+    assert authed_keys.json() == []
+
+    authed_projects = client.get("/api/v1/projects", headers=_auth())
+    assert authed_projects.status_code == 200
 
 
 def test_create_api_key_rejects_bad_slug_and_expiry() -> None:
@@ -429,6 +455,7 @@ def test_create_api_key_rejects_bad_slug_and_expiry() -> None:
         headers=_auth(),
     )
     assert bad_slug.status_code == 422
+    assert bad_slug.json()["error"]["code"] == "VALIDATION_ERROR"
 
     bad_date = client.post(
         "/api/v1/keys",

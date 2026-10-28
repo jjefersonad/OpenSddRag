@@ -41,13 +41,52 @@ describe("AppShell (REQ-012)", () => {
     const sidebar = await screen.findByTestId("app-sidebar");
     expect(sidebar).toBeInTheDocument();
     expect(screen.getByText(/docs & design system/i)).toBeInTheDocument();
-    expect(within(sidebar).getByRole("link", { name: /api keys/i })).toBeInTheDocument();
+    const keysLink = within(sidebar).getByRole("link", { name: /api keys/i });
+    expect(keysLink).toBeInTheDocument();
+    expect(keysLink).toHaveAttribute("href", "/keys");
+    expect(keysLink).not.toHaveAttribute("aria-current");
     // Demo appears twice (sidebar link + dashboard card link) — use the
     // sidebar's copy, then assert the detail rendered.
     const sidebarLink = within(sidebar).getByRole("link", { name: "demo" });
     fireEvent.click(sidebarLink);
     expect(await screen.findByRole("heading", { name: "Demo" })).toBeInTheDocument();
     await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+
+  it("authenticated /keys renders KeysPage inside the app shell", async () => {
+    setToken("t");
+    mockFetch((url) => {
+      if (url.includes("/keys")) return jsonResponse(200, []);
+      if (url.endsWith("/projects")) return jsonResponse(200, []);
+      return jsonResponse(200, []);
+    });
+    renderAt("/keys");
+    expect(await screen.findByTestId("app-sidebar")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "API keys" })).toBeInTheDocument();
+  });
+
+  it("unauthenticated /keys redirects to login without fetching keys", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    renderAt("/keys");
+    expect(await screen.findByLabelText(/token/i)).toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("API keys nav item is aria-current on /keys and Projects is not", async () => {
+    setToken("t");
+    mockFetch((url) => {
+      if (url.includes("/keys")) return jsonResponse(200, []);
+      if (url.endsWith("/projects")) return jsonResponse(200, []);
+      return jsonResponse(200, []);
+    });
+    renderAt("/keys");
+    const sidebar = await screen.findByTestId("app-sidebar");
+    const keysLink = within(sidebar).getByRole("link", { name: /api keys/i });
+    const projectsLink = within(sidebar).getByRole("link", { name: /projects$/i });
+    expect(keysLink).toHaveAttribute("href", "/keys");
+    expect(keysLink).toHaveAttribute("aria-current", "page");
+    expect(projectsLink).not.toHaveAttribute("aria-current");
   });
 
   it("sign-out clears the token and returns to the landing", async () => {

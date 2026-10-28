@@ -20,6 +20,36 @@ export function openSearchOverlay() {
   window.dispatchEvent(new CustomEvent("opsr:open-search"));
 }
 
+const NAV_ICON = {
+  width: 20,
+  height: 20,
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  flexShrink: 0,
+  fontFamily: "var(--font-mono)",
+  fontSize: 16,
+  lineHeight: 1,
+} as const;
+
+function SearchIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <circle cx="11" cy="11" r="7" />
+      <path d="M20 20l-3.4-3.4" />
+    </svg>
+  );
+}
+
+function LockIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <rect x="5" y="11" width="14" height="10" rx="2" />
+      <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+    </svg>
+  );
+}
+
 export default function App() {
   const [projects, setProjects] = useState<Project[]>([]);
   const navigate = useNavigate();
@@ -86,6 +116,7 @@ export default function App() {
         <div style={{ padding: "14px 12px", flex: 1, display: "flex", flexDirection: "column", gap: 3 }}>
           <Link
             to="/projects"
+            aria-current={isDashboard ? "page" : undefined}
             style={{
               display: "flex",
               alignItems: "center",
@@ -99,7 +130,7 @@ export default function App() {
               color: isDashboard ? "#34d399" : "#cdd3d7",
             }}
           >
-            <span style={{ fontFamily: "var(--font-mono)", fontSize: 13, width: 16 }}>▤</span> Projects
+            <span style={NAV_ICON}>▤</span> Projects
           </Link>
 
           <button
@@ -121,7 +152,7 @@ export default function App() {
             }}
           >
             <span style={{ display: "flex", alignItems: "center", gap: 11 }}>
-              <span style={{ fontFamily: "var(--font-mono)", fontSize: 13, width: 16 }}>⌕</span> Search
+              <span style={NAV_ICON}><SearchIcon /></span> Search
             </span>
             <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "#5b6469", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 4, padding: "1px 5px" }}>
               ⌘K
@@ -130,6 +161,7 @@ export default function App() {
 
           <Link
             to="/keys"
+            aria-current={isKeys ? "page" : undefined}
             style={{
               display: "flex",
               alignItems: "center",
@@ -143,7 +175,7 @@ export default function App() {
               color: isKeys ? "#34d399" : "#cdd3d7",
             }}
           >
-            <span style={{ fontFamily: "var(--font-mono)", fontSize: 13, width: 16 }}>⚿</span> API keys
+            <span style={NAV_ICON}><LockIcon /></span> API keys
           </Link>
 
           <Link
@@ -160,7 +192,7 @@ export default function App() {
               color: "#cdd3d7",
             }}
           >
-            <span style={{ fontFamily: "var(--font-mono)", fontSize: 13, width: 16 }}>◆</span> Docs &amp; design system
+            <span style={NAV_ICON}>◆</span> Docs &amp; design system
           </Link>
 
           <div
@@ -229,7 +261,7 @@ export default function App() {
               border: "none",
               color: "#8a9298",
               cursor: "pointer",
-              fontSize: 11,
+              fontSize: 14,
               fontFamily: "var(--font-mono)",
               padding: 0,
             }}

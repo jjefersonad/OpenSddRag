@@ -5,6 +5,8 @@ Spec refs:
       in SSE mode only" (stdio has no HTTP app; SSE mounts /api/v1).
     - REQ-016 Scenario "Static frontend serving" (SERVE_WEB_UI gates /).
     - REQ-011 Scenario "MCP transports unchanged" (the /mcp mount is preserved).
+    - web-api-key-management REQ-005 (existing valid key still connects) and
+      web-api-management delta REQ-001 (routes keep mounted beside keys routes).
 """
 
 from __future__ import annotations
@@ -12,9 +14,13 @@ from __future__ import annotations
 import inspect
 from pathlib import Path
 
+import httpx
+import pytest
 from starlette.testclient import TestClient
 
+from opensddrag.db import api_key_repository
 from opensddrag.mcp import server as srv
+from opensddrag.web.routes import build_routes
 
 
 class DummyMCPApp:
@@ -80,3 +86,70 @@ def test_stdio_does_not_build_http_app() -> None:
     # REQ-012: stdio mode has no HTTP app — the /api/v1 routes only exist in SSE.
     assert "build_http_app" not in inspect.getsource(srv._main_stdio)
     assert "build_http_app" in inspect.getsource(srv._main_sse)
+
+
+@pytest.mark.asyncio
+async def test_mcp_bearer_key_works_with_keys_routes_mounted() -> None:
+    """web-api-key-management REQ-005: with the keys routes shipped, a
+    previously valid MCP Bearer key passes AuthMiddleware on both /mcp
+    and /mcp/ (HTTP 200, no 307 dropping Authorization), and the
+    management REST routes stay mounted in the same app.
+    """
+    key_record, plaintext = await api_key_repository.create_key(
+        description="sse keys-shipped"
+    )
+    try:
+        app = srv.build_http_app(mcp_app=DummyMCPApp(), serve_web_ui=False)
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app),
+            base_url="http://test",
+            follow_redirects=False,
+        ) as client:
+            for path in ("/mcp", "/mcp/"):
+                resp = await client.post(
+                    path, headers={"Authorization": f"Bearer {plaintext}"}
+                )
+                assert resp.status_code == 200
+                assert resp.content == b"mcp"
+
+            projects = await client.get("/api/v1/projects")
+            assert projects.status_code == 401
+            keys = await client.get("/api/v1/keys")
+            assert keys.status_code == 401  # mounted and auth-wrapped
+    finally:
+        await api_key_repository.revoke_key(key_record.id)
+
+
+@pytest.mark.asyncio
+async def test_mcp_bearer_key_revoked_returns_401_with_keys_routes_mounted() -> None:
+    """web-api-key-management REQ-003/REQ-005: a dashboard-revoked key
+    yields 401 at /mcp inside the full app (middleware chain), not a
+    redirect or crash.
+    """
+    key_record, plaintext = await api_key_repository.create_key(
+        description="sse revoked-through-service"
+    )
+    await api_key_repository.revoke_key(key_record.id)
+    app = srv.build_http_app(mcp_app=DummyMCPApp(), serve_web_ui=False)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        resp = await client.post(
+            "/mcp", headers={"Authorization": f"Bearer {plaintext}"}
+        )
+        assert resp.status_code == 401
+
+
+def test_management_routes_mounted_beside_keys_routes() -> None:
+    """web-api-management delta REQ-001: projects, artifacts, and rules
+    routes are still mounted alongside the new keys routes.
+    """
+    routes = build_routes(object())  # handlers never invoked here
+    paths = [getattr(route, "path", "") for route in routes]
+    for prefix in (
+        "/api/v1/keys",
+        "/api/v1/projects",
+        "/api/v1/artifacts",
+        "/api/v1/projects/{slug}/rules",
+    ):
+        assert any(p.startswith(prefix) for p in paths), f"missing {prefix}"
