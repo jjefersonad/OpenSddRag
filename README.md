@@ -364,7 +364,9 @@ optional `lifecycle` phases, harness triggers, skills, slash commands and a
 derives progress from `lifecycle`, so a new pipeline renders without UI
 changes.
 
-- **`sdd`** is the built-in flow (bare `/opsr:*`, `opensddrag-*` skills).
+- **Built-in flows**: `sdd` (bare `/opsr:*` commands, `opensddrag-*` skills) and
+  `websec` — authorized web-vulnerability analysis (`/opsr:websec:<command>`,
+  `opensddrag-websec-*` skills), installed with `opensddrag init --flow sdd,websec`.
 - **Register a flow**: `opensddrag-server register-flow <manifest.json>` (CLI)
   or the `register_flow` MCP tool (used by `opensddrag init`).
 - **Install flows into a project**: `opensddrag init --flow sdd,docs` — non-SDD

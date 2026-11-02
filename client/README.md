@@ -177,6 +177,21 @@ Workflow and artifact formats are **per pipeline**. SDD's propose→spec→desig
 | `task` | `## Goal`, `## Acceptance Criteria`, `## Dependencies` |
 | `test` | `level` = scenario \| unit; `test_status` = pending → failing → passing |
 
+### Built-in websec (formats)
+
+`websec` ships as a second built-in pipeline for **authorized** web-vulnerability analysis — install it with `opensddrag init --flow sdd,websec`.
+
+| Kind | Headings / contract |
+|---|---|
+| `engagement` | `target`/`authorization`/`scope` metadata; `## Scope`, `## Authorization`, `## Rules of Engagement`, `## Out of Scope` |
+| `surface` | attack-surface bootstrap; `metadata.context_mode` = in-progress \| brownfield \| greenfield |
+| `finding` | `severity`/`reference` (CWE/OWASP)/`evidence`; `## Affected Component`, `## Reproduction`, `## Impact`, `## Remediation` |
+| `poc` | proof-of-concept reproducing a finding (`implements` the finding) |
+| `remediation` | fix for a finding (`relates_to` the finding) |
+| `report` | findings grouped by severity |
+
+Lifecycle: `Scope → Recon → Model → Assess → Validate → Remediate → Report`. Commands are `/opsr:websec:<command>`; skills are `opensddrag-websec-*`. An `engagement` declaring target, authorization and scope is required before any finding.
+
 ### Create a custom pipeline
 
 Two pieces: a **manifest** the server understands, and (optionally) skills/commands the CLI installs into the target project.

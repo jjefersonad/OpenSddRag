@@ -697,6 +697,29 @@ export function PipelinesBody() {
           scenario status from linked unit tests.
         </KindCard>
       </div>
+
+      <h3 style={{ ...STEP_TITLE, margin: "20px 0 10px" }}>Built-in pipeline: websec</h3>
+      <p style={P}>
+        Authorized web-vulnerability analysis ships as a second built-in pipeline (
+        <code style={{ fontFamily: "var(--font-mono)", fontSize: "12px" }}>flow: websec</code>), installed with{" "}
+        <code style={{ fontFamily: "var(--font-mono)", fontSize: "12px" }}>npx opensddrag init --flow sdd,websec --yes</code>
+        . Commands are namespaced{" "}
+        <code style={{ fontFamily: "var(--font-mono)", fontSize: "12px" }}>/opsr:websec:&lt;command&gt;</code> and skills
+        are prefixed <code style={{ fontFamily: "var(--font-mono)", fontSize: "12px" }}>opensddrag-websec-*</code>.
+      </p>
+      <p style={P}>
+        Kinds: <code style={{ fontFamily: "var(--font-mono)", fontSize: "12px" }}>engagement</code>,{" "}
+        <code style={{ fontFamily: "var(--font-mono)", fontSize: "12px" }}>surface</code>,{" "}
+        <code style={{ fontFamily: "var(--font-mono)", fontSize: "12px" }}>finding</code>,{" "}
+        <code style={{ fontFamily: "var(--font-mono)", fontSize: "12px" }}>poc</code>,{" "}
+        <code style={{ fontFamily: "var(--font-mono)", fontSize: "12px" }}>remediation</code>,{" "}
+        <code style={{ fontFamily: "var(--font-mono)", fontSize: "12px" }}>report</code>. Lifecycle: Scope → Recon → Model
+        → Assess → Validate → Remediate → Report. An{" "}
+        <code style={{ fontFamily: "var(--font-mono)", fontSize: "12px" }}>engagement</code> declaring target,
+        authorization and scope is required before any finding, and the flow adapts to three contexts — in-progress,
+        brownfield and greenfield — recorded as{" "}
+        <code style={{ fontFamily: "var(--font-mono)", fontSize: "12px" }}>metadata.context_mode</code>.
+      </p>
     </>
   );
 }

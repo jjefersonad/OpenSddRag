@@ -86,6 +86,37 @@ export async function registerManifests({ manifests, registerFn }) {
   return { registered, skipped };
 }
 
+/**
+ * Seed the rules declared by selected flow manifests (websec-flow design D5).
+ *
+ * A manifest may carry a client-only `rules` array; each rule is upserted for
+ * the flow's project via `addRuleFn(slug, rule)`. Manifests without `rules`
+ * contribute nothing, so the built-in `sdd` output stays byte-identical.
+ * Best-effort like `registerManifests`: a failure is recorded as `skipped`,
+ * never thrown, so `init` still exits 0 when the server rejects a rule.
+ * Returns `{ seeded, skipped }` (rule names / `<flow>:<rule>` keys).
+ */
+export async function seedFlowRules({ manifests, addRuleFn } = {}) {
+  const seeded = [];
+  const skipped = [];
+  for (const manifest of manifests || []) {
+    const rules = Array.isArray(manifest.rules) ? manifest.rules : [];
+    for (const rule of rules) {
+      if (!addRuleFn) {
+        skipped.push(`${manifest.flow}:${rule.name}`);
+        continue;
+      }
+      try {
+        await addRuleFn(manifest.flow, rule);
+        seeded.push(rule.name);
+      } catch {
+        skipped.push(`${manifest.flow}:${rule.name}`);
+      }
+    }
+  }
+  return { seeded, skipped };
+}
+
 /** A manifest missing a required field (flow-registry REQ-001 abort). */
 export class ManifestError extends Error {
   constructor(field) {

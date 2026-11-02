@@ -11,6 +11,7 @@ import {
   resolveSelectedFlows,
   installFlows,
   registerManifests,
+  seedFlowRules,
   toServerManifest,
   ManifestError,
   DEFAULT_FLOWS_ROOT,
@@ -220,6 +221,18 @@ export const initCommand = new Command("init")
     }
     if (reg.skipped.length) {
       console.log(chalk.yellow(`    Skipped flow registration: ${reg.skipped.join(", ")}`));
+    }
+
+    // ── 2d. Seed rules declared by the selected flow manifests (design D5) ────
+    const seeded = await seedFlowRules({
+      manifests: selectedManifests,
+      addRuleFn: (flow, rule) => addRule(serverUrl, slug, rule, apiKey),
+    });
+    if (seeded.seeded.length) {
+      console.log(chalk.dim(`    Seeded flow rules: ${seeded.seeded.join(", ")}`));
+    }
+    if (seeded.skipped.length) {
+      console.log(chalk.yellow(`    Skipped flow rules: ${seeded.skipped.join(", ")}`));
     }
 
     // ── 3. Configure AI tools ─────────────────────────────────────────────────

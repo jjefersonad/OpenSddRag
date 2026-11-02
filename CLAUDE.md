@@ -112,7 +112,7 @@ src/opensddrag/
 
 ### Database schema (3 memory types)
 
-The core is **domain-agnostic**: SDD is the first **flow**, not the only one.
+The core is **domain-agnostic**: SDD is the first **flow**, not the only one. A second built-in flow, `websec` (authorized web-vulnerability analysis), ships as a client pack under `client/src/templates/flows/websec/` (kinds `engagement/surface/finding/poc/remediation/report`; commands `/opsr:websec:<command>`).
 
 | Table | Purpose |
 |---|---|
