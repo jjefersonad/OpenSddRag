@@ -17,6 +17,7 @@ class Skill(BaseModel):
     name: str
     description: str
     workflow_steps: list[SkillStep]
+    flow: str = "sdd"
     metadata: dict
     created_at: datetime
     updated_at: datetime
@@ -27,4 +28,5 @@ class SkillCreate(BaseModel):
     name: str
     description: str
     workflow_steps: list[SkillStep]
+    flow: str = "sdd"
     metadata: dict = {}

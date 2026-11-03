@@ -17,6 +17,7 @@ def _row_to_rule(row: dict) -> Rule:
         severity=row["severity"],
         instruction=row["instruction"],
         enabled=row["enabled"],
+        flow=row.get("flow", "sdd"),
         metadata=row["metadata"],
         created_at=row["created_at"],
         updated_at=row["updated_at"],
@@ -44,18 +45,19 @@ async def upsert(data: RuleCreate) -> Rule:
             await cur.execute(
                 """
                 INSERT INTO project_rules
-                    (project_id, name, trigger, category, severity, instruction, enabled, metadata)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s::jsonb)
+                    (project_id, name, trigger, category, severity, instruction, enabled, flow, metadata)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
                 ON CONFLICT (project_id, name) DO UPDATE
                   SET trigger     = EXCLUDED.trigger,
                       category    = EXCLUDED.category,
                       severity    = EXCLUDED.severity,
                       instruction = EXCLUDED.instruction,
                       enabled     = EXCLUDED.enabled,
+                      flow        = EXCLUDED.flow,
                       metadata    = EXCLUDED.metadata,
                       updated_at  = NOW()
                 RETURNING id, project_id, name, trigger, category, severity,
-                          instruction, enabled, metadata, created_at, updated_at
+                          instruction, enabled, flow, metadata, created_at, updated_at
                 """,
                 (
                     str(data.project_id),
@@ -65,6 +67,7 @@ async def upsert(data: RuleCreate) -> Rule:
                     data.severity,
                     data.instruction,
                     data.enabled,
+                    data.flow or "sdd",
                     json.dumps(data.metadata),
                 ),
             )
@@ -118,6 +121,7 @@ async def list_by_trigger(
     project_id: UUID,
     trigger: str,
     enabled_only: bool = True,
+    flow: str | None = None,
 ) -> list[RuleSummary]:
     """List lightweight rule summaries for a given trigger, ordered by severity.
 
@@ -125,9 +129,16 @@ async def list_by_trigger(
     can short-circuit on the first error-level match. Unknown severities
     are sorted last to keep custom severities from interleaving with the
     built-in ones.
+
+    ``flow`` (flow-registry REQ-004) optionally scopes the checklist to one
+    workflow; ``None`` returns every flow's rules (unchanged behaviour).
     """
     clauses: list[str] = ["project_id = %s", "trigger = %s"]
     params: list = [str(project_id), trigger]
+
+    if flow is not None:
+        clauses.append("flow = %s")
+        params.append(flow)
 
     if enabled_only:
         clauses.append("enabled = TRUE")

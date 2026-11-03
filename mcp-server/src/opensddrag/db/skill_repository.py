@@ -15,6 +15,7 @@ def _row_to_skill(row: dict) -> Skill:
         name=row["name"],
         description=row["description"],
         workflow_steps=steps,
+        flow=row.get("flow", "sdd"),
         metadata=row["metadata"],
         created_at=row["created_at"],
         updated_at=row["updated_at"],
@@ -26,21 +27,23 @@ async def create_skill(data: SkillCreate, embedding: list[float]) -> Skill:
         async with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
             await cur.execute(
                 """
-                INSERT INTO skills (project_id, name, description, workflow_steps, metadata, embedding)
-                VALUES (%s, %s, %s, %s::jsonb, %s::jsonb, %s::vector)
+                INSERT INTO skills (project_id, name, description, workflow_steps, flow, metadata, embedding)
+                VALUES (%s, %s, %s, %s::jsonb, %s, %s::jsonb, %s::vector)
                 ON CONFLICT (project_id, name) DO UPDATE
                   SET description = EXCLUDED.description,
                       workflow_steps = EXCLUDED.workflow_steps,
+                      flow = EXCLUDED.flow,
                       metadata = EXCLUDED.metadata,
                       embedding = EXCLUDED.embedding,
                       updated_at = NOW()
-                RETURNING id, project_id, name, description, workflow_steps, metadata, created_at, updated_at
+                RETURNING id, project_id, name, description, workflow_steps, flow, metadata, created_at, updated_at
                 """,
                 (
                     str(data.project_id) if data.project_id else None,
                     data.name,
                     data.description,
                     json.dumps([s.model_dump() for s in data.workflow_steps]),
+                    data.flow or "sdd",
                     json.dumps(data.metadata),
                     str(embedding),
                 ),
@@ -55,7 +58,7 @@ async def list_skills(project_id: UUID) -> list[Skill]:
         async with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
             await cur.execute(
                 """
-                SELECT id, project_id, name, description, workflow_steps, metadata, created_at, updated_at
+                SELECT id, project_id, name, description, workflow_steps, flow, metadata, created_at, updated_at
                 FROM skills
                 WHERE project_id IS NULL OR project_id = %s
                 ORDER BY project_id NULLS FIRST, name
@@ -71,7 +74,7 @@ async def get_skill(name: str, project_id: UUID | None = None) -> Skill | None:
         async with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
             await cur.execute(
                 """
-                SELECT id, project_id, name, description, workflow_steps, metadata, created_at, updated_at
+                SELECT id, project_id, name, description, workflow_steps, flow, metadata, created_at, updated_at
                 FROM skills
                 WHERE name = %s AND (project_id IS NULL OR project_id = %s)
                 ORDER BY project_id NULLS LAST
@@ -88,7 +91,7 @@ async def suggest(project_id: UUID, query_embedding: list[float], limit: int = 3
         async with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
             await cur.execute(
                 """
-                SELECT id, project_id, name, description, workflow_steps, metadata, created_at, updated_at
+                SELECT id, project_id, name, description, workflow_steps, flow, metadata, created_at, updated_at
                 FROM skills
                 WHERE (project_id IS NULL OR project_id = %s) AND embedding IS NOT NULL
                 ORDER BY embedding <=> %s::vector

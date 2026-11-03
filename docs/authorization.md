@@ -11,23 +11,29 @@ When running OpenSddRag in SSE/HTTP mode for online access, API key authorizatio
 
 ## Manage keys
 
-All key management is done via the `opensddrag key` CLI from inside `mcp-server/`:
+The web dashboard (**API keys** in the sidebar, `/keys`) lists, creates, and
+revokes keys through the management REST API (`GET/POST /api/v1/keys`,
+`POST /api/v1/keys/:id/revoke`, auth: `Authorization: Bearer <MANAGEMENT_API_TOKEN>`).
+List responses never include the plaintext or hash; create returns `key` once.
+
+The same operations are available via the `opensddrag-server key` CLI from
+inside `mcp-server/`:
 
 ```bash
 # Create a global key
-opensddrag key create --description "my dev key"
+opensddrag-server key create --description "my dev key"
 
 # Create a key scoped to a project
-opensddrag key create --project myproject --description "ci key"
+opensddrag-server key create --project myproject --description "ci key"
 
 # Create a key with expiry
-opensddrag key create --description "temp key" --expires-at "2026-12-31"
+opensddrag-server key create --description "temp key" --expires-at "2026-12-31"
 
 # List all keys
-opensddrag key list
+opensddrag-server key list
 
 # Revoke a key
-opensddrag key revoke <key-id>
+opensddrag-server key revoke <key-id>
 ```
 
 The plaintext key is shown **once** at creation time. Save it immediately.

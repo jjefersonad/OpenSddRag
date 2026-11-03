@@ -38,6 +38,14 @@ _EXEMPT_REASON_MARKERS = (
     "exempt because",
 )
 
+# The only (flow, kind) pairs with a built-in Python validator. Their
+# behaviour and exact messages are frozen by sdd-workflow-lifecycle
+# REQ-004/REQ-005; every other pair uses declarative rules or the
+# structural fallback (flow-registry REQ-003).
+_BUILTIN_VALIDATORS: frozenset[tuple[str, str]] = frozenset(
+    {("sdd", "spec"), ("sdd", "task")}
+)
+
 
 def validate(
     artifact_type: str,
@@ -83,6 +91,70 @@ def validate(
                 task_linked_test_count=task_linked_test_count,
             )
         )
+    return issues
+
+
+def validate_registered(
+    flow: str,
+    kind: str,
+    content: str,
+    *,
+    rules: dict | None = None,
+    metadata: dict | None = None,
+    name_is_unique: bool = True,
+    task_metadata: dict | None = None,
+    task_linked_test_count: int = 0,
+) -> list[str]:
+    """Select a validator by ``(flow, kind)`` — flow-registry REQ-003.
+
+    Precedence:
+
+    1. **Built-in Python validator** if one is registered for the pair.
+       Only ``(sdd, spec)`` and ``(sdd, task)`` ship built-in; their
+       messages are frozen and the declarative rules are ignored.
+    2. **Declarative validation** when the ``artifact_kinds`` row carries
+       ``required_headings`` / ``required_metadata_keys``: each listed
+       heading must appear in ``content`` and each listed key must be a
+       key of ``metadata``.
+    3. **Structural fallback**: non-empty content (and a project-unique
+       ``name`` when ``name_is_unique`` is False).
+
+    Returns the issue list (empty = valid). Pure: no DB, no I/O — the
+    caller surfaces the DB-backed ``rules`` / uniqueness facts.
+    """
+    rules = rules or {}
+
+    # 1. Built-in SDD validators (frozen behaviour + exact messages).
+    if (flow, kind) in _BUILTIN_VALIDATORS:
+        return validate(
+            kind,
+            content,
+            task_metadata=task_metadata,
+            task_linked_test_count=task_linked_test_count,
+        )
+
+    # 2. Declarative rules from artifact_kinds.
+    headings = rules.get("required_headings") or []
+    metadata_keys = rules.get("required_metadata_keys") or []
+    if headings or metadata_keys:
+        issues: list[str] = []
+        for heading in headings:
+            if heading not in content:
+                issues.append(f"Missing required heading: {heading}")
+        meta = metadata or {}
+        for key in metadata_keys:
+            if key not in meta:
+                issues.append(f"Missing required metadata key: {key}")
+        return issues
+
+    # 3. Structural fallback for kinds with no built-in and no rules.
+    issues = []
+    if not content.strip():
+        issues.append("Content cannot be empty.")
+    elif len(content.strip()) < 10:
+        issues.append("Content is too short (minimum 10 characters).")
+    if not name_is_unique:
+        issues.append("Artifact name must be unique within the project.")
     return issues
 
 

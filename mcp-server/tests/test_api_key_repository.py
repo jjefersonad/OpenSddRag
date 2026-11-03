@@ -140,3 +140,39 @@ async def test_list_keys_strict_project_filter():
         # global key (soft) as the sibling tests do.
         await api_key_repository.revoke_key(global_key.id)
         await _delete_projects(project_a, project_b, project_empty)
+
+
+@pytest.mark.asyncio
+async def test_list_keys_can_exclude_revoked():
+    live, _ = await api_key_repository.create_key(description="live-filter")
+    dead, _ = await api_key_repository.create_key(description="dead-filter")
+    await api_key_repository.revoke_key(dead.id)
+    try:
+        ids = {k.id for k in await api_key_repository.list_keys(include_revoked=False)}
+        assert live.id in ids
+        assert dead.id not in ids
+
+        # Default listing (include_revoked=True, used by
+        # `opensddrag-server key list`) still returns both rows.
+        default_ids = {k.id for k in await api_key_repository.list_keys()}
+        assert {live.id, dead.id} <= default_ids
+    finally:
+        await api_key_repository.revoke_key(live.id)
+
+
+@pytest.mark.asyncio
+async def test_list_keys_global_only():
+    global_key, _ = await api_key_repository.create_key(description="global-only")
+    project = await _make_project()
+    scoped, _ = await api_key_repository.create_key(
+        description="scoped-only", project_id=project
+    )
+    try:
+        keys = await api_key_repository.list_keys(global_only=True)
+        ids = {k.id for k in keys}
+        assert global_key.id in ids
+        assert scoped.id not in ids
+        assert all(k.project_id is None for k in keys)
+    finally:
+        await api_key_repository.revoke_key(global_key.id)
+        await _delete_projects(project)
