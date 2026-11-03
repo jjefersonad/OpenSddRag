@@ -42,6 +42,15 @@ export async function createProject(serverUrl, { slug, name, description }, apiK
   }, apiKey);
 }
 
+export async function updateProject(serverUrl, projectSlug, { default_flow } = {}, apiKey) {
+  return withMcp(serverUrl, async (client) => {
+    const args = { project_slug: projectSlug };
+    if (default_flow) args.flow = default_flow;
+    const result = await client.callTool({ name: "set_project_default_flow", arguments: args });
+    return parseToolResult(result);
+  }, apiKey);
+}
+
 export async function listProjects(serverUrl, apiKey) {
   return withMcp(serverUrl, async (client) => {
     const result = await client.callTool({ name: "list_projects", arguments: {} });

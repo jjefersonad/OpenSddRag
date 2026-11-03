@@ -580,8 +580,10 @@ export function PipelinesBody() {
           SDD commands stay bare (<code style={{ fontFamily: "var(--font-mono)", fontSize: "12px" }}>/opsr:propose</code>
           ). Every other pipeline is namespaced{" "}
           <code style={{ fontFamily: "var(--font-mono)", fontSize: "12px" }}>/opsr:&lt;flow&gt;:&lt;command&gt;</code>.
-          Omitting <code style={{ fontFamily: "var(--font-mono)", fontSize: "12px" }}>--flow</code> with{" "}
-          <code style={{ fontFamily: "var(--font-mono)", fontSize: "12px" }}>--yes</code> stays SDD-only.
+          Omitting           <code style={{ fontFamily: "var(--font-mono)", fontSize: "12px" }}>--flow</code> with{" "}
+          <code style={{ fontFamily: "var(--font-mono)", fontSize: "12px" }}>--yes</code> stays SDD-only. Installing a{" "}
+          single non-SDD pipeline also sets the project&apos;s <em>default flow</em>, so its artifacts are tagged with that
+          pipeline. The project detail offers a <em>flow selector</em> and a <em>Live / All</em> change view.
         </p>
       </Step>
       <Step n={2} title="Register a custom pipeline">

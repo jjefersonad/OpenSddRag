@@ -204,7 +204,7 @@ Available endpoints in HTTP/SSE mode:
 - `GET /api/v1/search?q=...` — semantic search (management API)
 - `GET /api/v1/flows` — registered flows with kinds + lifecycle (management API)
 - `GET /api/v1/projects/:slug/tree` — active change artifact hierarchy (nodes + edges per flow)
-- `GET /api/v1/projects/:slug/changes` — live changes in progress, each with `started_at` (earliest artifact `created_at`), `updated_at`, `task_progress` and a progress-based phase pipeline (see the data definitions below). List payload has **no** artifact `content`.
+- `GET /api/v1/projects/:slug/changes` — changes, each with `started_at` (earliest artifact `created_at`), `updated_at`, `task_progress` and a progress-based phase pipeline (see the data definitions below). Default `?status=live` lists only live changes; `?status=all` also includes archived/non-live history, each with its last reached stage. List payload has **no** artifact `content`.
 - `GET /api/v1/projects/:slug/changes/:change` — one change's document bundle for the dashboard reader (auth: `Authorization: Bearer <MANAGEMENT_API_TOKEN>`). Response shape: `{change, flow, proposal, design, specs, tasks, task_count}` where `proposal`/`design` are full artifacts or `null`, `specs` are full artifacts (including `content`), and `tasks` are `{name, status, content, done}` (`done` is true when status is `archived` or `metadata.done`). Membership is `metadata.change_name` (same as MCP `read_change_bundle`); this REST path is **not** the MCP tool — MCP still omits task bodies. Unknown slug or change → HTTP 404.
 - `GET /api/v1/keys` — list MCP API keys (`?project=<slug>`, `?scope=global`, `?include_revoked=true`). Never returns plaintext or hash. Default listing omits revoked keys.
 - `POST /api/v1/keys` — create a key (`description`, optional `project_slug`, optional `expires_at`). Response includes `key` once.
@@ -378,6 +378,10 @@ changes.
   `required_metadata_keys`), otherwise a structural fallback.
 - **Resolution**: MCP tools accept an optional `flow`, resolved from the
   project's `default_flow` and finally `'sdd'`.
+- **Setting the default flow**: `opensddrag init --flow <single non-sdd flow>`
+  sets the project's `default_flow` to it (via the `set_project_default_flow`
+  MCP tool). Mixed selections (`sdd,websec`) keep `sdd`, so non-SDD artifacts
+  must pass `flow` explicitly.
 - **Formats belong to the flow**: SDD's proposal/spec/design/task/test
   headings are the `sdd` kinds, not a global schema. A custom pipeline
   declares its own kinds and `required_headings` in the manifest.

@@ -47,8 +47,17 @@ export interface ChangesPage {
   page_size: number;
 }
 
-export function getChanges(slug: string, page = 1, pageSize = CHANGES_PAGE_SIZE): Promise<ChangesPage> {
-  const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
+export function getChanges(
+  slug: string,
+  page = 1,
+  pageSize = CHANGES_PAGE_SIZE,
+  status: "live" | "all" = "live",
+): Promise<ChangesPage> {
+  const params = new URLSearchParams({
+    page: String(page),
+    page_size: String(pageSize),
+    status,
+  });
   return apiRequest<ChangesPage>(`/projects/${slug}/changes?${params}`);
 }
 

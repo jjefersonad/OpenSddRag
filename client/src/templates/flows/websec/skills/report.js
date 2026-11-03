@@ -13,14 +13,14 @@ $ARGUMENTS = the change name (report covers all findings), or a severity filter.
 ## Workflow
 
 ### Step 1 — Collect the findings
-\`list_artifacts(type="finding", project_slug="${slug}")\` and filter by
+\`list_artifacts(type="finding", flow="websec", project_slug="${slug}")\` and filter by
 \`metadata.change_name\`. Read each finding's \`severity\`.
 
 ### Step 2 — Create the report
 Group findings by the same \`severity\` vocabulary used on the findings
 (\`critical|high|medium|low\`). The report MUST include the headings
 \`## Summary\` and \`## Findings by Severity\`, and reference every finding:
-\`create_artifact(name="<change>-report", type="report", content="<summary · findings grouped by severity>", metadata={"change_name": "<change>", "finding_count": "<N>"}, project_slug="${slug}")\`
+\`create_artifact(name="<change>-report", type="report", content="<summary · findings grouped by severity>", metadata={"change_name": "<change>", "finding_count": "<N>"}, flow="websec", project_slug="${slug}")\`
 Then \`validate_artifact(name="<change>-report", project_slug="${slug}")\`.
 
 ### Step 3 — Link the report to each finding

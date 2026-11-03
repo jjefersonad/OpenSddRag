@@ -147,6 +147,7 @@ proposal → spec(s) → design → task(s) → [apply] → [verify] → [sync d
 - Delta specs (for modified capabilities) carry `metadata.is_delta = true` and are merged into main specs by `/opsr:sync`
 - All artifacts live in the database — no local markdown files are created by the MCP server
 - MCP tools take an optional `flow` (resolved from `projects.default_flow`, else `'sdd'`); non-SDD flows register their manifest via `register_flow`
+- `opensddrag init --flow <single non-SDD flow>` sets the project's `default_flow` (tool `set_project_default_flow`); mixed selections keep `sdd`
 - Validation is selected by `(flow, kind)`: built-in SDD (`spec`/`task`) → declarative `artifact_kinds.rules` → structural fallback
 
 ### Slash commands (installed into client projects by `opensddrag init`)

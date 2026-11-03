@@ -34,15 +34,18 @@ export default function ProjectDetail() {
   const [page, setPage] = useState(1);
   const [pageSlug, setPageSlug] = useState(slug);
   const [revision, setRevision] = useState(0);
+  const [changesStatus, setChangesStatus] = useState<"live" | "all">("live");
   if (slug !== pageSlug) {
     setPageSlug(slug);
     setPage(1);
     setProject(null);
     setChanges(null);
+    setChangesStatus("live");
     setRevision(0);
   }
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState("overview");
+  const [flowFilter, setFlowFilter] = useState<string | null>(null);
   const [stage, setStage] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -69,7 +72,7 @@ export default function ProjectDetail() {
   useEffect(() => {
     let active = true;
     if (!slug) return;
-    getChanges(slug, page, CHANGES_PAGE_SIZE).then(
+    getChanges(slug, page, CHANGES_PAGE_SIZE, changesStatus).then(
       (data) => {
         if (!active) return;
         setChanges(data.items);
@@ -84,15 +87,15 @@ export default function ProjectDetail() {
     return () => {
       active = false;
     };
-  }, [slug, page, revision]);
+  }, [slug, page, revision, changesStatus]);
 
   useEffect(() => {
     setStage(null);
   }, [slug, change]);
 
   const tabs = useMemo(
-    () => buildTabs(project, flows),
-    [project, flows],
+    () => buildTabs(project, flows, flowFilter),
+    [project, flows, flowFilter],
   );
 
   if (error) return <p role="alert">{error}</p>;
@@ -135,7 +138,26 @@ export default function ProjectDetail() {
               {activeChangePhaseName(headerChange)}
             </span>
           ) : null}
-          <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+          <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
+            {flows.length > 0 ? (
+              <select
+                aria-label="Flow filter"
+                data-testid="flow-filter"
+                value={flowFilter ?? ""}
+                onChange={(event) => {
+                  const value = event.target.value || null;
+                  setFlowFilter(value);
+                  setTab("overview");
+                }}
+                style={{ ...HEADER_ACTION, paddingRight: 6 }}
+              >
+                {flowOptions(flows).map((opt) => (
+                  <option key={opt.value ?? "__all__"} value={opt.value ?? ""}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            ) : null}
             <button type="button" onClick={() => setEditing(true)} style={HEADER_ACTION}>
               Edit
             </button>
@@ -194,7 +216,7 @@ export default function ProjectDetail() {
         <>
           <TabBar tabs={tabBarTabs} active={tab} onSelect={setTab} />
           <div role="tabpanel">
-            {renderTabContent(slug ?? "", tab, flows, changes, changesTotal, page, setPage, () => setRevision((value) => value + 1), (nodeType: string) => {
+            {renderTabContent(slug ?? "", tab, flows, flowFilter, changes, changesTotal, page, changesStatus, (s) => { setChangesStatus(s); setPage(1); }, setPage, () => setRevision((value) => value + 1), (nodeType: string) => {
               const target = buildTabs(project, flows).find((t) => t.type === nodeType && nodeType !== "test");
               setTab(target?.key ?? (nodeType === "test" ? "task" : "overview"));
             })}
@@ -271,19 +293,28 @@ interface TabEntry {
   flow?: string;
 }
 
-function buildTabs(project: ProjectDetailData | null, flows: FlowInfo[]): TabEntry[] {
+/** Flow selector options: "All flows" plus every registered flow (REQ-001). */
+export function flowOptions(flows: FlowInfo[]): { value: string | null; label: string }[] {
+  return [
+    { value: null, label: "All flows" },
+    ...flows.map((flow) => ({ value: flow.flow, label: flow.flow })),
+  ];
+}
+
+export function buildTabs(
+  project: ProjectDetailData | null,
+  flows: FlowInfo[],
+  flowFilter: string | null = null,
+): TabEntry[] {
   const tabs: TabEntry[] = [{ key: "overview", label: "Overview" }];
   const seen = new Set<string>();
-  for (const flow of flows) {
+  const source = flowFilter ? flows.filter((flow) => flow.flow === flowFilter) : flows;
+  for (const flow of source) {
     for (const kindEntry of flow.kinds) {
       const kind = kindEntry.kind;
       if (seen.has(kind)) continue;
       seen.add(kind);
-      if (kind === "task") {
-        tabs.push({ key: "task", label: labelFor(kind), type: kind });
-      } else {
-        tabs.push({ key: kind, label: labelFor(kind), type: kind });
-      }
+      tabs.push({ key: kind, label: labelFor(kind), type: kind, flow: flowFilter ?? undefined });
     }
   }
   tabs.push({ key: "hierarchy", label: "Hierarchy" });
@@ -307,9 +338,12 @@ function renderTabContent(
   slug: string,
   tab: string,
   flows: FlowInfo[],
+  flowFilter: string | null,
   changes: ChangeSummary[] | null,
   changesTotal: number,
   page: number,
+  changesStatus: "live" | "all",
+  onChangesStatus: (status: "live" | "all") => void,
   onPage: (page: number) => void,
   onChanged: () => void,
   onNavigate: (nodeType: string) => void,
@@ -324,6 +358,8 @@ function renderTabContent(
           page={page}
           pageSize={CHANGES_PAGE_SIZE}
           onPage={onPage}
+          status={changesStatus}
+          onStatusChange={onChangesStatus}
         />
       );
     case "hierarchy":
@@ -331,7 +367,7 @@ function renderTabContent(
     case "harness":
       return <HarnessTab slug={slug} />;
     default: {
-      const entry = buildTabs(null, flows).find((t) => t.key === tab);
+      const entry = buildTabs(null, flows, flowFilter).find((t) => t.key === tab);
       const type = entry?.type ?? tab;
       if (type === "task") return <TaskList slug={slug} onChanged={onChanged} />;
       return <ArtifactsTab slug={slug} type={type} flow={entry?.flow} onChanged={onChanged} />;

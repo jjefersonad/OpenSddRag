@@ -17,7 +17,7 @@ $ARGUMENTS = a finding name to remediate, or empty to remediate every open findi
 \`## Remediation\` heading.
 
 ### Step 2 — Create the remediation
-\`create_artifact(name="<change>-remediation-<N>", type="remediation", content="<what was changed · why it resolves the finding · retest result>", metadata={"change_name": "<change>", "finding": "<change>-finding-<N>"}, project_slug="${slug}")\`
+\`create_artifact(name="<change>-remediation-<N>", type="remediation", content="<what was changed · why it resolves the finding · retest result>", metadata={"change_name": "<change>", "finding": "<change>-finding-<N>"}, flow="websec", project_slug="${slug}")\`
 
 ### Step 3 — Link the remediation to its finding
 \`link_artifacts(source_name="<change>-remediation-<N>", target_name="<change>-finding-<N>", relationship_type="relates_to", project_slug="${slug}")\`

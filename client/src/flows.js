@@ -117,6 +117,18 @@ export async function seedFlowRules({ manifests, addRuleFn } = {}) {
   return { seeded, skipped };
 }
 
+/**
+ * The flow slug `init` should pin as the project's `default_flow`: the sole
+ * selected flow when exactly one non-`sdd` flow is installed, else `null`
+ * (sdd-only, mixed or empty selections keep the existing default). So artifacts
+ * created without an explicit `flow` resolve correctly. flow-tagging REQ-002/003.
+ */
+export function selectedDefaultFlow(manifests) {
+  const flows = (manifests || []).map((m) => m.flow);
+  if (flows.length === 1 && flows[0] !== "sdd") return flows[0];
+  return null;
+}
+
 /** A manifest missing a required field (flow-registry REQ-001 abort). */
 export class ManifestError extends Error {
   constructor(field) {
