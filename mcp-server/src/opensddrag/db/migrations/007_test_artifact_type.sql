@@ -23,4 +23,17 @@
 -- makes a second run a no-op instead of erroring on "already exists" — the
 -- same belt-and-braces posture as `006_api_key_permissions.sql`, even though
 -- `run_migrations()` already skips files it has recorded as applied.
-ALTER TYPE artifact_type ADD VALUE IF NOT EXISTS 'test';
+--
+-- Post-multi-flow note (008_multi_flow.sql): on a database where 008 already
+-- ran, the `artifact_type` enum no longer exists (artifacts.type became
+-- plain text) — but the run_migrations() bootstrap on legacy databases only
+-- adopts files <= 003, so a legacy DB replaying this migration without the
+-- tracking table may still hit 007 *before* 008. On fresh DBs the enum does
+-- not exist and 001 already created artifacts.type as text via the
+-- multi-flow baseline; guard the ADD VALUE so both worlds work.
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'artifact_type') THEN
+        ALTER TYPE artifact_type ADD VALUE IF NOT EXISTS 'test';
+    END IF;
+END $$;

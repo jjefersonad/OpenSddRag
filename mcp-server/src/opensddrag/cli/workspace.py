@@ -110,8 +110,8 @@ def _merge_mcp_server(settings_path: Path, server_name: str, server_config: dict
 def init(
     slug: str = typer.Option(None, "--project", "-p", help="Project slug (default: current directory name)"),
     name: str = typer.Option(None, "--name", "-n", help="Project display name"),
-    mcp_url: str = typer.Option(None, "--mcp-url", help="MCP server URL for SSE (e.g. http://localhost:8000/sse). Omit to use stdio."),
-    mcp_command: str = typer.Option(None, "--mcp-command", help="MCP command for stdio (default: opensddrag server start)"),
+    mcp_url: str = typer.Option(None, "--mcp-url", help="MCP server URL (e.g. http://localhost:8000/mcp). Omit to use stdio."),
+    mcp_command: str = typer.Option(None, "--mcp-command", help="MCP command for stdio (default: opensddrag-server server start)"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompts"),
 ):
     """Initialize OpenSddRag in the current project directory.
@@ -120,9 +120,9 @@ def init(
     It registers the project in the central database and sets up Claude Code integration.
 
     Examples:
-        opensddrag workspace init
-        opensddrag workspace init --project my-api --name "My API"
-        opensddrag workspace init --mcp-url http://localhost:8000/sse
+        opensddrag-server workspace init
+        opensddrag-server workspace init --project my-api --name "My API"
+        opensddrag-server workspace init --mcp-url http://localhost:8000/mcp
     """
     cwd = Path.cwd()
 
@@ -139,7 +139,7 @@ def init(
     if mcp_url:
         console.print(f"  MCP:  [cyan]{mcp_url}[/cyan] (SSE)")
     else:
-        cmd = mcp_command or "opensddrag server start"
+        cmd = mcp_command or "opensddrag-server server start"
         console.print(f"  MCP:  [cyan]{cmd}[/cyan] (stdio)")
 
     if not yes and not Confirm.ask("\nProceed?", default=True):
@@ -164,9 +164,11 @@ def init(
         if mcp_url:
             server_cfg = {"url": mcp_url}
         else:
+            default_cmd = mcp_command or "opensddrag-server server start"
+            parts = default_cmd.split()
             server_cfg = {
-                "command": (mcp_command or "opensddrag").split()[0],
-                "args": (mcp_command or "opensddrag server start").split()[1:],
+                "command": parts[0],
+                "args": parts[1:],
             }
         _merge_mcp_server(settings_path, "opensddrag", server_cfg)
         console.print(f"  [green]✓ {settings_path.relative_to(cwd)}[/green]")
@@ -196,7 +198,7 @@ def init(
         # 5. Write local opensddrag.yaml
         yaml_path = cwd / "opensddrag.yaml"
         if not yaml_path.exists():
-            mcp_section = f"  url: {mcp_url}" if mcp_url else f"  command: {mcp_command or 'opensddrag server start'}"
+            mcp_section = f"  url: {mcp_url}" if mcp_url else f"  command: {mcp_command or 'opensddrag-server server start'}"
             yaml_path.write_text(
                 f"project: {slug}\n"
                 f"mcp:\n{mcp_section}\n"
@@ -205,8 +207,8 @@ def init(
 
         console.print(f"\n[bold green]✓ Project '{slug}' connected to OpenSddRag![/bold green]")
         console.print("\nNext steps:")
-        console.print(f"  [dim]opensddrag spec create --project {slug}[/dim]")
-        console.print(f"  [dim]opensddrag search artifacts \"<topic>\" --project {slug}[/dim]")
+        console.print(f"  [dim]opensddrag-server spec create --project {slug}[/dim]")
+        console.print(f"  [dim]opensddrag-server search semantic \"<topic>\" --project {slug}[/dim]")
         console.print("  Or open Claude Code — the MCP server is ready.")
 
     asyncio.run(_run())

@@ -56,3 +56,13 @@ export async function addRule(serverUrl, projectSlug, rule, apiKey) {
     return parseToolResult(result);
   }, apiKey);
 }
+
+export async function registerFlow(serverUrl, manifest, apiKey) {
+  return withMcp(serverUrl, async (client) => {
+    const result = await client.callTool({
+      name: "register_flow",
+      arguments: { manifest },
+    });
+    return parseToolResult(result);
+  }, apiKey);
+}

@@ -4,20 +4,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-OpenSddRag is a **Spec-Driven Development (SDD) + Harness system** delivered as an MCP server backed by PostgreSQL/pgvector. It provides AI agents with persistent semantic memory (artifacts, execution traces, working context) and a structured workflow (propose → spec → design → tasks → apply → archive) for disciplined software development.
+OpenSddRag is a **Spec-Driven Development (SDD) + Harness system** delivered as an MCP server backed by PostgreSQL/pgvector. It provides AI agents with persistent semantic memory (artifacts, execution traces, working context) and structured **pipelines** (flows). SDD is the built-in pipeline (`propose → spec → design → tasks → apply → verify → archive`); other flows register their own kinds and lifecycle.
 
 The repo has two independent packages:
 - **`mcp-server/`** — Python MCP server (the core system)
 - **`client/`** — Node.js CLI that connects any project to a running MCP server
 
+Live operator docs: dashboard [http://localhost:3001/docs](http://localhost:3001/docs).
+
 ## Infrastructure
 
-Start the database and MCP server (SSE mode, port 8000):
+Start the database, MCP server (SSE, port 8000) and dashboard (port 3001):
 ```bash
 docker compose up -d
 ```
 
-Database runs on `localhost:54326` (pgvector/pg16). Copy `mcp-server/.env.example` to `mcp-server/.env` before running locally.
+Database runs on `localhost:54326` (pgvector/pg16). Dashboard login is `MANAGEMENT_API_TOKEN` (Compose default `123456`). MCP clients use a separate API key from `/keys`. Copy `mcp-server/.env.example` to `mcp-server/.env` before running locally.
 
 ## mcp-server (Python)
 
@@ -91,36 +93,52 @@ src/opensddrag/
   cli/server.py           — `opensddrag-server server start` (stdio or SSE)
   db/connection.py        — async psycopg connection pool + run_migrations()
   db/migrations/001_initial.sql — schema (pgvector HNSW indexes)
-  db/repository.py        — artifact CRUD + semantic search + relationships
+  db/migrations/008_multi_flow.sql — flow registry + free-text artifact types
+  db/repository.py        — artifact CRUD + semantic search + relationships (flow-aware)
   db/project_repository.py
   db/session_repository.py
   db/skill_repository.py
   db/trace_repository.py
+  db/flow_registry.py     — register/upsert flows + artifact_kinds
+  core/domain/artifact_validation.py — validate_registered: (flow, kind) registry
+  core/domain/flow_manifest.py — flow manifest schema (pure domain; optional `lifecycle` phases)
+  core/domain/change_progress.py — pure live-change grouping, progress-based phase derivation, task/project progress (change/phase/progress semantics)
   embedding/service.py    — sentence-transformers embed()
+  web/                    — REST management API (/api/v1) for the dashboard
+  web/api/flows.py        — GET /api/v1/flows (flow registry read w/ lifecycle)
+  infrastructure/management_service.py — SqlManagementService (management API; enriched /projects payloads include change/phase/phases/task_progress; artifacts list supports include=content; get_change_bundle serves GET /projects/:slug/changes/:change)
   models/                 — pydantic models for all DB entities
 ```
 
 ### Database schema (3 memory types)
 
+The core is **domain-agnostic**: SDD is the first **flow**, not the only one. A second built-in flow, `websec` (authorized web-vulnerability analysis), ships as a client pack under `client/src/templates/flows/websec/` (kinds `engagement/surface/finding/poc/remediation/report`; commands `/opsr:websec:<command>`).
+
 | Table | Purpose |
 |---|---|
-| `artifacts` | **Semantic memory** — proposals, specs, designs, tasks, changes; each has a `vector(384)` embedding |
-| `artifact_relationships` | Links between artifacts (`depends_on`, `implements`, `relates_to`) |
+| `artifacts` | **Semantic memory** — proposals, specs, designs, tasks, tests and any flow's kinds; each has a `vector(384)` embedding. `type` is free text; `flow` scopes the artifact to a workflow (default `'sdd'`) |
+| `artifact_relationships` | Links between artifacts (`depends_on`, `implements`, `relates_to`) — cross-flow links allowed |
 | `execution_traces` | **Episodic memory** — agent action log with embeddings for recall |
 | `sessions` | **Working context** — active artifact IDs + free-form JSON context per project |
-| `skills` | SDD skill templates (global when `project_id IS NULL`, project-specific otherwise) |
-| `projects` | Multi-tenant project registry |
+| `skills` | Skill templates (global when `project_id IS NULL`, project-specific otherwise); carry `flow` |
+| `project_rules` | Harness rules; `trigger` is free text; carry `flow` |
+| `projects` | Multi-tenant registry; `default_flow` resolves an omitted `flow` |
+| `flows` | Flow registry — one row per workflow (`manifest` JSONB), seeded with `sdd` |
+| `artifact_kinds` | `(flow, kind)` registry with declarative `rules` (`required_headings` / `required_metadata_keys`) |
 
 All vector columns use HNSW indexes (`vector_cosine_ops`). Embeddings are 384-dimension (`all-MiniLM-L6-v2`).
 
 ### MCP transports
 
 - **stdio**: Claude Code spawns `opensddrag-server server start` as a child process. Configured via `.mcp.json` in the client project with `type: "http"` pointing to the SSE endpoint.
-- **SSE**: Starlette app (`/sse` + `/messages/`) for Docker/remote use. Also exposes a small REST API (`/health`, `GET /api/projects`, `POST /api/projects`) used by the Node.js client.
+- **SSE / HTTP**: Starlette app exposing the MCP streamable-HTTP transport at `/mcp` (auth: Bearer API key) for Docker/remote use. It also exposes the management REST API under `/api/v1/...` (auth: Bearer `MANAGEMENT_API_TOKEN`) and, when `SERVE_WEB_UI=true`, the built dashboard at `/`. The web dashboard loads IBM Plex fonts via Google Fonts, and its visual fidelity is verified with `scripts/ui-fidelity/check.py` against `docs/ui/FIDELITY_CHECKLIST.md`.
 
 ### SDD artifact lifecycle
 
-Every piece of work flows through artifact types in dependency order:
+SDD is the built-in `flow='sdd'`; other flows reuse the same substrate. The
+proposal/spec/design/task/test headings below are **SDD kinds**, not a global
+schema — a custom pipeline declares its own kinds and `required_headings`.
+Every SDD change still flows through artifact types in dependency order:
 ```
 proposal → spec(s) → design → task(s) → [apply] → [verify] → [sync deltas] → archive
 ```
@@ -128,12 +146,14 @@ proposal → spec(s) → design → task(s) → [apply] → [verify] → [sync d
 - Artifact names follow a convention: `<change-name>-proposal`, `<change-name>-<capability>-spec`, `<change-name>-design`, `<change-name>-task-<group>-<N>`
 - Delta specs (for modified capabilities) carry `metadata.is_delta = true` and are merged into main specs by `/opsr:sync`
 - All artifacts live in the database — no local markdown files are created by the MCP server
+- MCP tools take an optional `flow` (resolved from `projects.default_flow`, else `'sdd'`); non-SDD flows register their manifest via `register_flow`
+- Validation is selected by `(flow, kind)`: built-in SDD (`spec`/`task`) → declarative `artifact_kinds.rules` → structural fallback
 
 ### Slash commands (installed into client projects by `opensddrag init`)
 
-Commands are installed to `.claude/commands/opsr/` and invoked as `/opsr:<name>` inside Claude Code. Each command file is a structured prompt that drives the AI through a specific SDD phase using the MCP tools. The templates live in `client/src/templates/commands/index.js`.
+Commands are installed to `.claude/commands/opsr/` and invoked as `/opsr:<name>` inside Claude Code. Each command file is a structured prompt that drives the AI through a specific SDD phase using the MCP tools. The SDD templates live in `client/src/templates/flows/sdd/`; other flows live under `client/src/templates/flows/<slug>/` and are selected with `opensddrag init --flow <slug[,slug]>` (default `sdd`). Non-SDD commands are namespaced `/opsr:<flow>:<command>` and skills are prefixed `opensddrag-<flow>-<command>`.
 
-Available commands: `propose`, `spec`, `design`, `tasks`, `apply`, `verify`, `sync`, `archive`, `explore`, `continue`, `status`, `flow`, `search`.
+Available commands (SDD): `propose`, `spec`, `design`, `tasks`, `apply`, `verify`, `sync`, `archive`, `explore`, `continue`, `status`, `flow`, `search`, `harness`.
 
 ## Conventions
 
@@ -176,3 +196,81 @@ Tasks that genuinely have no testable unit (e.g. prompt templates, SQL migration
 All project-level text **must be written in English**: source code, inline comments, SQL migration comments, documentation files (`README.md`, `docs/`, `CLAUDE.md`), CLI help strings, and planning artifacts inside `openspec/`.
 
 Database-persisted content — artifacts (proposals, specs, designs, tasks), execution traces, skills, and session context — is **language-agnostic**. Store it exactly as the user writes it. Never translate, reject, or modify content based on detected language.
+<!-- opensddrag:start -->
+---
+
+## OpenSddRag — SDD + Harness
+
+This project uses **OpenSddRag** for Spec-Driven Development with persistent semantic memory.
+
+- **MCP server name:** `opensddrag` (http://localhost:8000) — configured in `.mcp.json`
+- **Project slug:** `opensddrag`
+- **Skills:** `.claude/skills/opensddrag-*/SKILL.md`
+- **Commands:** `.claude/commands/opsr/`
+
+### MCP Tools (opensddrag server)
+
+The `opensddrag` MCP server exposes these tools — they appear in your tool list under the `opensddrag` namespace:
+
+| Tool | Purpose |
+|------|---------|
+| `create_artifact` | Create proposals, specs, designs, tasks |
+| `read_artifact` | Read an artifact by name |
+| `list_artifacts` | List artifacts with type/status filters |
+| `update_artifact` | Update content or status |
+| `validate_artifact` | Check spec structure |
+| `link_artifacts` | Link artifacts (implements / depends_on / relates_to) |
+| `get_relationships` | Get linked artifacts |
+| `search_semantic` | Semantic search via pgvector |
+| `recall_episodes` | Find past agent actions (episodic memory) |
+| `get_working_context` | Get active session context |
+| `update_working_context` | Update session context |
+| `record_trace` | Log an action to episodic memory |
+
+> If these tools are NOT in your active tool list, the server is not connected.
+> Start it with `docker compose up -d` and reload the project. Do not attempt to work around a missing server.
+
+### Before implementing any feature
+
+Always search for existing specs first:
+
+```
+search_semantic(query="<topic>", project_slug="opensddrag")
+```
+
+### SDD Commands
+
+| Command | When to use |
+|---------|-------------|
+| `/opsr:propose` | Start here — capture intent and scope before any code |
+| `/opsr:spec` | Formalize requirements (Purpose / SHALL / Scenarios) |
+| `/opsr:design` | Document technical decisions and trade-offs |
+| `/opsr:tasks` | Decompose spec into atomic tasks (< 4h each) |
+| `/opsr:apply` | Implement the next pending task against spec criteria |
+| `/opsr:flow` | Run the full flow end-to-end for a feature |
+| `/opsr:search` | Semantic search over specs and past work |
+| `/opsr:status` | Show what's in progress and what's done |
+| `/opsr:archive` | Mark a completed feature as archived |
+
+### SDD Flow
+
+```
+/opsr:propose → /opsr:spec → /opsr:design → /opsr:tasks → /opsr:apply → /opsr:archive
+```
+<!-- opensddrag:end -->
+
+<!-- opensddrag:flow:websec -->
+## OpenSddRag — Web Security Analysis (websec)
+
+This project uses the **websec** OpenSddRag flow for authorized web-vulnerability analysis.
+
+- **Commands:** `.claude/commands/opsr/websec/` (invoked as `/opsr:websec:<command>`)
+
+### websec Flow
+
+```
+/opsr:websec:scope → /opsr:websec:assess → /opsr:websec:validate → /opsr:websec:remediate → /opsr:websec:report
+```
+
+An `engagement` artifact declaring target, authorization and scope MUST exist before any finding.
+

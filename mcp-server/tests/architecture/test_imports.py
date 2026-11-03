@@ -264,6 +264,38 @@ def test_mcp_adapter_does_not_import_repositories() -> None:
     )
 
 
+# ─── Layer 4: web/ REST adapter has no db imports ────────────────────────────
+
+
+def test_web_adapter_does_not_import_repositories() -> None:
+    """The `web/` REST delivery adapter MUST NOT import `opensddrag.db`.
+
+    Spec refs:
+        web-management-system mcp-server delta REQ-014 Scenario
+        "REST-adapter import test" and REQ-011 Scenario "REST adapter does
+        not import db" — mirrors `test_mcp_adapter_does_not_import_repositories`.
+
+    `grep` on a missing directory exits 2 with no matches; the returncode
+    assertion would then pass vacuously, so the missing directory must be
+    asserted explicitly (the adapter is required by REQ-012).
+    """
+    web_dir = SRC / "web"
+    assert web_dir.is_dir(), (
+        "web/ REST adapter directory is missing — required by "
+        "web-management-system mcp-server delta REQ-012."
+    )
+    result = _grep(r"from opensddrag\.db|import opensddrag\.db", web_dir)
+    assert result.returncode != 0, (
+        f"web/ REST adapter imports from opensddrag.db (forbidden):\n{result.stdout}\n"
+        f"REST handlers MUST delegate to repositories through the shared "
+        f"wiring — see REQ-015. Reuse db/repository.py via the composition "
+        f"root, never import it in web/."
+    )
+    assert result.stdout == "", (
+        f"web/ REST adapter imports from opensddrag.db:\n{result.stdout}"
+    )
+
+
 # ─── Sanity: every test uses subprocess.run with check=False ─────────────────
 
 

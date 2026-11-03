@@ -49,6 +49,7 @@ _EXPECTED_NAMES = frozenset(
         "get_relationships",
         "list_projects",
         "create_project",
+        "register_flow",
         "openspec_import",
     }
 )
@@ -60,6 +61,7 @@ _EXPECTED_WRITE = frozenset(
         "create_skill",
         "add_rule",
         "create_project",
+        "register_flow",
         "openspec_import",
         "record_trace",
         "link_artifacts",

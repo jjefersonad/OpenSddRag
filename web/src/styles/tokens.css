@@ -1,0 +1,38 @@
+/* OpenSddRag design tokens — mirror of docs/ui/AGENT_GUIDE.md §8.
+ * Every visual value the dashboard uses lives here as a CSS variable.
+ * Keep in sync with AGENT_GUIDE §8. */
+
+:root {
+  /* Typography */
+  --font-sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+
+  /* Backgrounds */
+  --color-page: #0a0c0d;
+  --color-sidebar: #0c0e10;
+  --color-card: #131619;
+  --color-inset: #0e1113;
+
+  /* Borders */
+  --color-border: rgba(255, 255, 255, 0.08);
+
+  /* Text */
+  --color-text-primary: #e8ebed;
+  --color-text-secondary: #8a9298;
+  --color-text-tertiary: #5b6469;
+
+  /* Accent (primary action) */
+  --color-accent: #10b981;
+  --color-accent-hover: #34d399;
+  --color-on-accent: #04140d;
+
+  /* Semantic colors */
+  --color-warn: #fbbf24; /* amber — WHEN / warning / proposal */
+  --color-info: #60a5fa; /* blue  — SHALL / info / spec */
+  --color-design: #a78bfa; /* violet — design */
+  --color-danger: #f87171; /* red   — error / risk */
+
+  /* Section labels */
+  --label-font-size: 11px;
+  --label-letter-spacing: 0.08em;
+}
