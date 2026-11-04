@@ -238,6 +238,10 @@ async def _main_sse(host: str, port: int, serve_web_ui: bool | None = None) -> N
     if not settings.auth_enabled:
         logging.warning("WARNING: Auth is disabled. Do not expose this server publicly.")
 
+    from opensddrag.web.deps import announce_cors_origins
+
+    announce_cors_origins(settings)
+
     app = build_http_app(
         mcp_app=_MCPApp(), serve_web_ui=resolve_serve_web_ui(serve_web_ui)
     )

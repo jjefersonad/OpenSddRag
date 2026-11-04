@@ -1,6 +1,25 @@
 from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Single source of truth for the built-in dashboard origin (used as the
+# WEB_ORIGIN default and by the startup CORS announcement).
+DEFAULT_WEB_ORIGIN = "http://localhost:3001"
+
+
+def split_origins(raw: str) -> list[str]:
+    """Parse `WEB_ORIGIN`: single origin or comma-separated list.
+
+    Empty segments between commas are dropped, each entry is whitespace-trimmed,
+    duplicates are removed, first-occurrence order preserved.
+    """
+    seen: set[str] = set()
+    origins: list[str] = []
+    for entry in (part.strip() for part in raw.split(",")):
+        if entry and entry not in seen:
+            seen.add(entry)
+            origins.append(entry)
+    return origins
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
@@ -20,7 +39,12 @@ class Settings(BaseSettings):
         default=None,
         validation_alias=AliasChoices("MANAGEMENT_API_TOKEN", "MANAGEMENT_TOKEN"),
     )
-    web_origin: str = "http://localhost:3001"  # env: WEB_ORIGIN
+    web_origin: str = DEFAULT_WEB_ORIGIN  # env: WEB_ORIGIN
+
+    @property
+    def web_origins(self) -> list[str]:
+        """WEB_ORIGIN expressed as an allowlist: single origin or comma-separated list."""
+        return split_origins(self.web_origin)
 
     # Opt-in static serving of the built web dashboard (web/dist) at "/" in
     # SSE mode (mcp-server REQ-016). Default False: no static mount unless

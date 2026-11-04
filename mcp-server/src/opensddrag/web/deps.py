@@ -22,7 +22,7 @@ from starlette.middleware.cors import CORSMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from opensddrag.config import settings
+from opensddrag.config import DEFAULT_WEB_ORIGIN, settings, split_origins
 
 logger = logging.getLogger(__name__)
 
@@ -85,12 +85,13 @@ def wire_cors(settings_obj: Any) -> list[Middleware]:
     """Build the CORS middleware stack allowing `settings.web_origin`.
 
     Kept as a helper so the SSE-mode Starlette assembly (backend-6) can
-    include it in `Middleware(...)` lists.
+    include it in `Middleware(...)` lists. `web_origin` accepts a single
+    origin or a comma-separated list (parsed by `split_origins`).
     """
     return [
         Middleware(
             CORSMiddleware,
-            allow_origins=[settings_obj.web_origin],
+            allow_origins=split_origins(settings_obj.web_origin),
             allow_credentials=False,
             allow_methods=["GET", "POST", "PATCH", "DELETE"],
             allow_headers=["Authorization", "Content-Type"],
@@ -105,3 +106,18 @@ def warn_if_disabled() -> None:
             "MANAGEMENT_API_TOKEN is not configured: the /api/v1 management "
             "REST API responds 401 (fails closed) to every request."
         )
+
+
+def announce_cors_origins(settings_obj: Any) -> None:
+    """Startup announcement per REQ-016: one log line per CORS allowlist.
+
+    WARN when the effective list is exactly the localhost default — an
+    allowlist that can never serve a remote dashboard is precisely what
+    was invisible during the production CORS incident this change fixes.
+    """
+    origins = split_origins(settings_obj.web_origin)
+    message = "CORS allowed origins: " + ", ".join(origins)
+    if origins == [DEFAULT_WEB_ORIGIN]:
+        logger.warning(message)
+    else:
+        logger.info(message)
