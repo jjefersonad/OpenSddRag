@@ -165,7 +165,9 @@ opensddrag-server server start --transport sse --port 8000`}</CodeBlock>
           an MCP API key.{" "}
           <code style={{ fontFamily: "var(--font-mono)", fontSize: "12px" }}>WEB_ORIGIN</code> should match the dashboard
           origin (Compose default <code style={{ fontFamily: "var(--font-mono)", fontSize: "12px" }}>http://localhost:3001</code>
-          ) so the browser can call <code style={{ fontFamily: "var(--font-mono)", fontSize: "12px" }}>/api/v1</code>.
+          ) so the browser can call <code style={{ fontFamily: "var(--font-mono)", fontSize: "12px" }}>/api/v1</code>. It
+          accepts one origin or a comma-separated list; a remote deployment must set it to the public origin of the
+          dashboard (comma-separated for multiple origins) or the browser blocks the API with CORS.
         </p>
       </Step>
     </>

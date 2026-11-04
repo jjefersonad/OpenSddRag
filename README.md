@@ -110,7 +110,7 @@ Key variables in `mcp-server/.env`:
 | `OPENSDDRAG_PROJECT` | `default` | Active project slug |
 | `AUTH_ENABLED` | `true` | Enables authentication in SSE mode |
 | `MANAGEMENT_API_TOKEN` | `123456` (Compose) | Bearer token for `/api/v1` and the dashboard login — not an MCP API key |
-| `WEB_ORIGIN` | `http://localhost:3001` | CORS origin for the dashboard |
+| `WEB_ORIGIN` | `http://localhost:3001` | CORS allowlist for the dashboard — one origin or comma-separated origins; remote deployments MUST set it to the dashboard's public origin or the browser blocks `​/api/v1​` with CORS |
 | `SERVE_WEB_UI` | `false` | Serve the built dashboard from the MCP process itself |
 
 ---

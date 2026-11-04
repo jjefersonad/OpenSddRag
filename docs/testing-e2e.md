@@ -63,4 +63,4 @@ python3 scripts/ui-fidelity/check.py \
   --token "$OPENSDDRAG_TOKEN"
 ```
 
-`OPENSDDRAG_TOKEN` is `MANAGEMENT_API_TOKEN` (Compose default `123456`), not an MCP API key. Default dashboard origin is `http://localhost:3001`; Vite on `:5173` is blocked by CORS unless `WEB_ORIGIN` matches.
+`OPENSDDRAG_TOKEN` is `MANAGEMENT_API_TOKEN` (Compose default `123456`), not an MCP API key. Default dashboard origin is `http://localhost:3001`; Vite on `:5173` is blocked by CORS unless `WEB_ORIGIN` matches. `WEB_ORIGIN` accepts a single origin or a comma-separated list (e.g. `WEB_ORIGIN=http://localhost:3001, http://localhost:5173`) — whitespace between commas is trimmed.
