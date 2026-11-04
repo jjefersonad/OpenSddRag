@@ -104,11 +104,10 @@ async def test_get_change_bundle_includes_bodies_and_task_count(project) -> None
     for i in range(1, 5):
         task = by_name[f"chg-a-task-{i}"]
         assert "content" in task and task["content"]
-        assert set(task) == {"name", "status", "content", "done"}
+        assert set(task) == {"id", "name", "status", "content", "done"}
 
 
 # ── unit-2: other change_name excluded ───────────────────────────────────────
-
 
 async def test_get_change_bundle_excludes_other_changes(project) -> None:
     await _seed_full_change(project, "chg-a")
@@ -169,3 +168,13 @@ async def test_get_change_bundle_unknown_slug_or_change_raises(project) -> None:
         await _svc().get_change_bundle("no-such-slug", "chg-a")
     with pytest.raises(ResourceNotFoundError):
         await _svc().get_change_bundle(project.slug, "does-not-exist")
+
+
+# ── unit-2 (change-bundle-task-shape REQ-002): README documents the keys ──────
+
+
+def test_readme_documents_the_change_bundle_task_keys() -> None:
+    from pathlib import Path
+
+    readme = (Path(__file__).resolve().parents[2] / "README.md").read_text(encoding="utf-8")
+    assert "{id, name, status, content, done}" in readme

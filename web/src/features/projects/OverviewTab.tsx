@@ -292,7 +292,7 @@ export default function OverviewTab({
             </div>
           ) : null}
         </div>
-        {changes === null ? (
+        {changes == null ? (
           <p style={{ color: "var(--color-text-tertiary)" }}>Loading…</p>
         ) : changes.length === 0 ? (
           <div

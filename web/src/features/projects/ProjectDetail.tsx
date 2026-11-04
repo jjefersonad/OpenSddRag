@@ -75,8 +75,8 @@ export default function ProjectDetail() {
     getChanges(slug, page, CHANGES_PAGE_SIZE, changesStatus).then(
       (data) => {
         if (!active) return;
-        setChanges(data.items);
-        setChangesTotal(data.total);
+        setChanges(data.items ?? []);
+        setChangesTotal(data.total ?? 0);
       },
       () => {
         if (!active) return;
