@@ -126,3 +126,42 @@ def test_wire_cors_uses_settings_origin() -> None:
 
     middlewares = wire_cors(FakeSettings())
     assert middlewares, "expected at least one middleware instance"
+
+
+def test_wire_cors_allows_every_configured_origin() -> None:
+    # WHEN settings.web_origin holds two comma-separated origins with whitespace
+    # THEN wire_cors MUST build CORSMiddleware whose allow_origins contains
+    #     both, trimmed; credentials/methods/headers unchanged.
+    from starlette.middleware.cors import CORSMiddleware
+
+    from opensddrag.web.deps import wire_cors
+
+    class FakeSettings:
+        web_origin = "http://cidurb-data.example:3001, http://localhost:5173"
+
+    middlewares = wire_cors(FakeSettings())
+    assert len(middlewares) == 1
+    cors = middlewares[0]
+    assert cors.cls is CORSMiddleware
+    assert cors.kwargs["allow_origins"] == [
+        "http://cidurb-data.example:3001",
+        "http://localhost:5173",
+    ]
+    assert cors.kwargs["allow_credentials"] is False
+    assert cors.kwargs["allow_methods"] == ["GET", "POST", "PATCH", "DELETE"]
+    assert cors.kwargs["allow_headers"] == ["Authorization", "Content-Type"]
+
+
+def test_wire_cors_single_origin_backward_compatible() -> None:
+    # WHEN settings.web_origin holds a single origin (existing duck-typed shape)
+    # THEN allow_origins MUST contain exactly that one origin (no regression).
+    from starlette.middleware.cors import CORSMiddleware
+
+    from opensddrag.web.deps import wire_cors
+
+    class FakeSettings:
+        web_origin = "http://app.example.com"
+
+    (cors,) = wire_cors(FakeSettings())
+    assert cors.cls is CORSMiddleware
+    assert cors.kwargs["allow_origins"] == ["http://app.example.com"]

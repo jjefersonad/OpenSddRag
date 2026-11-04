@@ -44,7 +44,7 @@ web/src/
 
 - Login stores `MANAGEMENT_API_TOKEN` in `localStorage` (`opensddrag.management_token`).
 - Every `/api/v1` call sends `Authorization: Bearer <token>`. HTTP 401 clears the token and routes to `/login`.
-- `VITE_API_URL` defaults to `http://localhost:8000/api/v1`. Compose `WEB_ORIGIN` must match the dashboard origin (`http://localhost:3001`) or the browser is blocked by CORS.
+- `VITE_API_URL` defaults to `http://localhost:8000/api/v1`. Compose `WEB_ORIGIN` must match the dashboard origin (single value or comma-separated list; default `http://localhost:3001`) or the browser is blocked by CORS. The server logs the effective allowlist at startup (WARNING when it is the localhost default).
 - MCP API keys (`/keys`) are a different secret from the dashboard token. The dashboard is not an MCP client.
 
 ---

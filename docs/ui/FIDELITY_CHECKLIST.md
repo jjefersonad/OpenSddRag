@@ -19,10 +19,13 @@ screen, produced by `scripts/ui-fidelity/check.py`. Screenshots land in
 - A management API token (`OPENSDDRAG_TOKEN` env or `--token`). The dashboard
   stores it under the localStorage key `opensddrag.management_token`.
 - The dashboard URL (`APP_URL` env or `--app-url`, default `http://localhost:3001`).
-  `mcp-server` CORS allows **exactly one** origin (`WEB_ORIGIN`, default
-  `http://localhost:3001` — `mcp-server/src/opensddrag/config.py`). The API sends
-  no `Access-Control-Allow-Origin` for Vite's default port (5173). Either:
+  `mcp-server` CORS allows the origins configured in `WEB_ORIGIN` (single origin
+  or comma-separated list, default `http://localhost:3001` —
+  `mcp-server/src/opensddrag/config.py`). The API sends no
+  `Access-Control-Allow-Origin` for Vite's default port (5173) unless it is in
+  the list. Either:
   - run Vite on the allowed origin: `npm run dev -- --port 3001` (from `web/`), or
+  - add `http://localhost:5173` to `WEB_ORIGIN` for the dev session, or
   - for local check runs only, launch a Chrome instance with web security disabled
     (`playwright` chromium launch arg `--disable-web-security`).
   Prefer the first. Do not disable web security outside local verification.
