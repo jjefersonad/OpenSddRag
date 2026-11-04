@@ -49,6 +49,7 @@ async def update_project(
     name: str | None = None,
     description: str | None = None,
     language: str | None = None,
+    default_flow: str | None = None,
     new_slug: str | None = None,
 ) -> Project | None:
     sets = ["updated_at = NOW()"]
@@ -62,6 +63,9 @@ async def update_project(
     if language is not None:
         sets.append("language = %s")
         params.append(language)
+    if default_flow is not None:
+        sets.append("default_flow = %s")
+        params.append(default_flow)
     if new_slug is not None:
         sets.append("slug = %s")
         params.append(new_slug)

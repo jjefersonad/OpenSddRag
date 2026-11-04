@@ -28,7 +28,7 @@ the MCP server cannot see the target filesystem. Do NOT write any files.
 ### Step 2 — Create the engagement (authorization gate)
 The \`engagement\` artifact is the precondition for every finding. Create it with the
 required metadata keys \`target\`, \`authorization\` and \`scope\`:
-\`create_artifact(name="<change>-engagement", type="engagement", content="<scope · authorization · rules of engagement · out of scope>", metadata={"change_name": "<change>", "target": "<target>", "authorization": "<authorized-by / reference>", "scope": "<in-scope assets>", "context_mode": "<mode>"}, project_slug="${slug}")\`
+\`create_artifact(name="<change>-engagement", type="engagement", content="<scope · authorization · rules of engagement · out of scope>", metadata={"change_name": "<change>", "target": "<target>", "authorization": "<authorized-by / reference>", "scope": "<in-scope assets>", "context_mode": "<mode>"}, flow="websec", project_slug="${slug}")\`
 The content MUST include the headings \`## Scope\`, \`## Authorization\`,
 \`## Rules of Engagement\` and \`## Out of Scope\`. Then
 \`validate_artifact(name="<change>-engagement", project_slug="${slug}")\`.
@@ -39,7 +39,7 @@ Create exactly one \`surface\` artifact, derived from the source of truth for th
 - **in-progress** → derive from the existing specs/designs plus the code;
 - **brownfield** → enumerate routes/entry points discovered in the code;
 - **greenfield** → enumerate the proposed architecture's trust boundaries.
-\`create_artifact(name="<change>-surface", type="surface", content="<entry points · trust boundaries>", metadata={"change_name": "<change>", "context_mode": "<mode>", "source": "<specs|code|design-intent>"}, project_slug="${slug}")\`
+\`create_artifact(name="<change>-surface", type="surface", content="<entry points · trust boundaries>", metadata={"change_name": "<change>", "context_mode": "<mode>", "source": "<specs|code|design-intent>"}, flow="websec", project_slug="${slug}")\`
 
 ### Step 4 — Record the action
 \`record_trace(action="websec_scope", result_summary="scope: context_mode=<mode>, engagement+surface created", project_slug="${slug}")\`

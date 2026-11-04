@@ -167,6 +167,8 @@ MCP tools take an optional `flow` argument (defaults to the project's `default_f
 
 Workflow and artifact formats are **per pipeline**. SDD's propose→spec→design… sequence and its heading contracts apply only to `flow=sdd`. A custom pipeline replaces both with its own `lifecycle` and kind rules (the dashboard **Pipelines** page documents the same model).
 
+Installing a **single** non-SDD pipeline also sets the project's `default_flow` to it, so artifacts created without an explicit `flow` land on that pipeline. Mixed selections (`--flow sdd,websec`) keep `sdd` as the default.
+
 ### Built-in SDD (formats)
 
 | Kind | Headings / contract |

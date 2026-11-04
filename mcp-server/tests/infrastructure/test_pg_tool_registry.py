@@ -50,6 +50,7 @@ _EXPECTED_NAMES = frozenset(
         "list_projects",
         "create_project",
         "register_flow",
+        "set_project_default_flow",
         "openspec_import",
     }
 )
@@ -62,6 +63,7 @@ _EXPECTED_WRITE = frozenset(
         "add_rule",
         "create_project",
         "register_flow",
+        "set_project_default_flow",
         "openspec_import",
         "record_trace",
         "link_artifacts",

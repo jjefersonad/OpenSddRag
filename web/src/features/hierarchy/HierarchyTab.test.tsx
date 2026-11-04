@@ -39,6 +39,7 @@ beforeEach(() => {
   handler = (url: string) => {
     if (url.includes("/tree")) return jsonResponse(200, TREE);
     if (url.endsWith("/projects/demo")) return jsonResponse(200, { id: "1", name: "Demo", slug: "demo", summary: {}, flows: [] });
+    if (url.includes("/changes")) return jsonResponse(200, { items: [], total: 0, page: 1, page_size: 8 });
     return jsonResponse(200, []);
   };
   vi.stubGlobal("fetch", vi.fn(async (input: string) => handler(String(input))));

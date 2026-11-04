@@ -107,6 +107,7 @@ beforeEach(() => {
         },
       ]);
     }
+    if (url.includes("/changes")) return jsonResponse(200, { items: [], total: 0, page: 1, page_size: 8 });
     return jsonResponse(200, []);
   };
   vi.stubGlobal("fetch", vi.fn(async (input: string) => handler(String(input))));

@@ -64,6 +64,7 @@ def project_routes(service: ManagementServiceProtocol) -> list[Route]:
                 name=dto.name,
                 description=dto.description,
                 language=dto.language,
+                default_flow=dto.default_flow,
                 new_slug=dto.slug,
             )
         except Exception as exc:  # noqa: BLE001
@@ -101,10 +102,15 @@ def project_routes(service: ManagementServiceProtocol) -> list[Route]:
         page_size = _positive_int(request.query_params.get("page_size", "8"), "page_size")
         if isinstance(page_size, JSONResponse):
             return page_size
+        status = request.query_params.get("status", "live")
+        if status not in ("live", "all"):
+            return error_response(
+                422, "VALIDATION_ERROR", "unsupported status value", ["status must be 'live' or 'all'"]
+            )
         try:
             return JSONResponse(
                 await service.list_changes(
-                    request.path_params["slug"], page=page, page_size=page_size
+                    request.path_params["slug"], page=page, page_size=page_size, status=status
                 )
             )
         except Exception as exc:  # noqa: BLE001

@@ -79,6 +79,7 @@ class ProjectUpdate(BaseModel):
     slug: str | None = None
     description: str | None = None
     language: str | None = None
+    default_flow: str | None = None
 
     @field_validator("slug")
     @classmethod
@@ -97,6 +98,18 @@ class ProjectUpdate(BaseModel):
     def name_must_not_be_blank(cls, value: str | None) -> str | None:
         if value is not None and not value.strip():
             raise ValueError("name must not be blank")
+        return value
+
+    @field_validator("default_flow")
+    @classmethod
+    def default_flow_must_be_kebab_case(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        if not SLUG_PATTERN.fullmatch(value):
+            raise ValueError(
+                "default_flow must be kebab-case: lowercase letters/digits "
+                "separated by single hyphens"
+            )
         return value
 
 

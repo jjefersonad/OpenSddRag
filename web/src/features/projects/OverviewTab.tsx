@@ -237,6 +237,8 @@ export default function OverviewTab({
   page,
   pageSize,
   onPage,
+  status = "live",
+  onStatusChange,
 }: {
   slug: string;
   changes: ChangeSummary[] | null;
@@ -244,6 +246,8 @@ export default function OverviewTab({
   page: number;
   pageSize: number;
   onPage: (page: number) => void;
+  status?: "live" | "all";
+  onStatusChange?: (status: "live" | "all") => void;
 }) {
   const [session, setSession] = useState<SessionSummary | null>(null);
   const [traces, setTraces] = useState<ExecutionTrace[]>([]);
@@ -260,8 +264,35 @@ export default function OverviewTab({
   return (
     <div className="overview-grid">
       <div>
-        <div style={SECTION_LABEL}>Live changes</div>
-        {changes === null ? (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={SECTION_LABEL}>{status === "all" ? "All changes" : "Live changes"}</div>
+          {onStatusChange ? (
+            <div role="group" aria-label="Change scope" style={{ display: "flex", gap: 6, marginBottom: 14 }}>
+              {(["live", "all"] as const).map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  data-testid={`changes-scope-${value}`}
+                  aria-pressed={status === value}
+                  onClick={() => onStatusChange(value)}
+                  style={{
+                    background: status === value ? "rgba(16,185,129,0.12)" : "transparent",
+                    border: "1px solid var(--color-border)",
+                    borderRadius: 6,
+                    color: status === value ? "var(--color-accent-hover)" : "#8a9298",
+                    fontFamily: "var(--font-mono)",
+                    fontSize: 11,
+                    padding: "3px 10px",
+                    cursor: "pointer",
+                  }}
+                >
+                  {value === "live" ? "Live" : "All"}
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
+        {changes == null ? (
           <p style={{ color: "var(--color-text-tertiary)" }}>Loading…</p>
         ) : changes.length === 0 ? (
           <div

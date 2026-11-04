@@ -33,6 +33,7 @@ class ManagementServiceProtocol(Protocol):
         name: str | None = None,
         description: str | None = None,
         language: str | None = None,
+        default_flow: str | None = None,
         new_slug: str | None = None,
     ) -> dict[str, Any]: ...
 
@@ -61,7 +62,7 @@ class ManagementServiceProtocol(Protocol):
     async def get_tree(self, slug: str) -> dict[str, Any]: ...
 
     async def list_changes(
-        self, slug: str, page: int = 1, page_size: int = 8
+        self, slug: str, page: int = 1, page_size: int = 8, status: str = "live"
     ) -> dict[str, Any]: ...
 
     async def get_change_bundle(self, slug: str, change: str) -> dict[str, Any]: ...

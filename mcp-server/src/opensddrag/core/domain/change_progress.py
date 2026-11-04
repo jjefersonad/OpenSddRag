@@ -98,6 +98,23 @@ def group_live_changes(artifacts: Sequence[ChangeArtifact]) -> dict[str, list[Ch
     return {name: members for name, members in _live_groups(artifacts) if name}
 
 
+def group_all_changes(artifacts: Sequence[ChangeArtifact]) -> dict[str, list[ChangeArtifact]]:
+    """Every named change (live or archived), most recently updated first.
+
+    Like `group_live_changes` but without the live filter, so a fully archived
+    change is still listed — used by the dashboard's All (history) view
+    (dashboard-flows REQ-003).
+    """
+    groups: dict[str, list[ChangeArtifact]] = {}
+    for artifact in artifacts:
+        if is_synced_main_spec(artifact) or not artifact.change_name:
+            continue
+        groups.setdefault(artifact.change_name, []).append(artifact)
+    items = list(groups.items())
+    items.sort(key=lambda item: _recency(item[1]), reverse=True)
+    return dict(items)
+
+
 def task_progress(artifacts: Sequence[ChangeArtifact]) -> dict[str, int]:
     """`{done, total}` over the tasks of `artifacts` (REQ-007)."""
     tasks = [a for a in artifacts if a.type == "task"]
