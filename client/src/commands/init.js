@@ -4,7 +4,7 @@ import chalk from "chalk";
 import { existsSync, readFileSync, writeFileSync } from "fs";
 import { join, basename } from "path";
 
-import { checkHealth, createProject, addRule, registerFlow } from "../api.js";
+import { checkHealth, createProject, addRule, registerFlow, updateProject } from "../api.js";
 import { DEFAULT_RULES } from "../harness-rules.js";
 import { DEFAULT_SERVER_URL, resolveServerUrl, resolveApiKey } from "../config.js";
 import {
@@ -12,6 +12,7 @@ import {
   installFlows,
   registerManifests,
   seedFlowRules,
+  selectedDefaultFlow,
   toServerManifest,
   ManifestError,
   DEFAULT_FLOWS_ROOT,
@@ -233,6 +234,19 @@ export const initCommand = new Command("init")
     }
     if (seeded.skipped.length) {
       console.log(chalk.yellow(`    Skipped flow rules: ${seeded.skipped.join(", ")}`));
+    }
+
+    // ── 2e. Align the project default_flow (design D2, flow-tagging REQ-002) ──
+    // Only when exactly one non-sdd flow is selected: artifacts created without
+    // an explicit `flow` then resolve to it.
+    const defaultFlow = selectedDefaultFlow(selectedManifests);
+    if (defaultFlow) {
+      try {
+        await updateProject(serverUrl, slug, { default_flow: defaultFlow }, apiKey);
+        console.log(chalk.dim(`    Default flow → ${defaultFlow}`));
+      } catch (err) {
+        console.log(chalk.yellow(`    Could not set default_flow: ${err.message}`));
+      }
     }
 
     // ── 3. Configure AI tools ─────────────────────────────────────────────────

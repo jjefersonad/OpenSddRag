@@ -53,6 +53,7 @@ _WRITE_TOOLS: frozenset[str] = frozenset(
         "add_rule",
         "create_project",
         "register_flow",
+        "set_project_default_flow",
         "openspec_import",
         "record_trace",
         "link_artifacts",
@@ -420,6 +421,21 @@ _TOOL_DEFINITIONS: tuple[tuple[str, str, dict[str, Any]], ...] = (
                     "type": "object",
                     "description": "Flow manifest: {flow, kinds, harness_triggers, skills, commands, claude_md_section}.",
                 },
+            },
+        },
+    ),
+    (
+        "set_project_default_flow",
+        (
+            "Set a project's default_flow (the flow used when a tool call omits "
+            "`flow`). Used by `opensddrag init` to align a non-sdd flow selection."
+        ),
+        {
+            "type": "object",
+            "required": ["project_slug", "flow"],
+            "properties": {
+                "project_slug": {"type": "string", "description": "Project slug whose default flow to set."},
+                "flow": {"type": "string", "description": "Flow slug to use as the project's default (kebab-case)."},
             },
         },
     ),

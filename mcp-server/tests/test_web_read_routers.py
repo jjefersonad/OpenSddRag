@@ -117,7 +117,7 @@ class StubService:
             raise ResourceNotFoundError(f"change {change!r} not found in project {slug!r}")
         return self.bundles[(slug, change)]
 
-    async def list_changes(self, slug, page: int = 1, page_size: int = 8):
+    async def list_changes(self, slug, page: int = 1, page_size: int = 8, status: str = "live"):
         if slug not in self.changes_by_slug:
             raise ResourceNotFoundError(f"project {slug!r} not found")
         return paginate(list(self.changes_by_slug[slug]), page, page_size)

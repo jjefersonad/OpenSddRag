@@ -17,7 +17,7 @@ $ARGUMENTS = a finding name to validate, or empty to validate every finding.
 \`evidence\` against the actual target (read-only). Never mutate the target.
 
 ### Step 2 — Create the poc
-\`create_artifact(name="<change>-poc-<N>", type="poc", content="<reproduction steps · expected vs observed>", metadata={"change_name": "<change>", "finding": "<change>-finding-<N>"}, project_slug="${slug}")\`
+\`create_artifact(name="<change>-poc-<N>", type="poc", content="<reproduction steps · expected vs observed>", metadata={"change_name": "<change>", "finding": "<change>-finding-<N>"}, flow="websec", project_slug="${slug}")\`
 
 ### Step 3 — Link the poc to its finding
 \`link_artifacts(source_name="<change>-poc-<N>", target_name="<change>-finding-<N>", relationship_type="implements", project_slug="${slug}")\`

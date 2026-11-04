@@ -126,7 +126,7 @@ class StubService:
             raise ResourceNotFoundError(f"artifact {artifact_id!r} not found")
         return {"deleted": True, "id": artifact_id}
 
-    async def update_project(self, slug, name=None, description=None, language=None, new_slug=None):
+    async def update_project(self, slug, name=None, description=None, language=None, default_flow=None, new_slug=None):
         project = self.projects.get(slug) if hasattr(self, "projects") else None
         if project is None:
             raise ResourceNotFoundError(f"project {slug!r} not found")
@@ -138,6 +138,8 @@ class StubService:
             project["description"] = description
         if language is not None:
             project["language"] = language
+        if default_flow is not None:
+            project["default_flow"] = default_flow
         if new_slug and new_slug != slug:
             self.projects.pop(slug)
             project["slug"] = new_slug

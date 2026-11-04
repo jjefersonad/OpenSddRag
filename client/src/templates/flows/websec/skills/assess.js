@@ -27,7 +27,7 @@ does not exploit beyond a read-only reproduction.
 Each finding MUST carry the required metadata keys \`severity\`, \`reference\`
 (CWE/OWASP) and \`evidence\`, and the required headings \`## Affected Component\`,
 \`## Reproduction\`, \`## Impact\`, \`## Remediation\`:
-\`create_artifact(name="<change>-finding-<N>", type="finding", content="<affected component · reproduction · impact · remediation>", metadata={"change_name": "<change>", "severity": "<critical|high|medium|low>", "reference": "<CWE-xxx / OWASP A0x>", "evidence": "<observation>", "context_mode": "<mode>"}, project_slug="${slug}")\`
+\`create_artifact(name="<change>-finding-<N>", type="finding", content="<affected component · reproduction · impact · remediation>", metadata={"change_name": "<change>", "severity": "<critical|high|medium|low>", "reference": "<CWE-xxx / OWASP A0x>", "evidence": "<observation>", "context_mode": "<mode>"}, flow="websec", project_slug="${slug}")\`
 Then \`validate_artifact(name="<change>-finding-<N>", project_slug="${slug}")\`.
 
 ### Step 4 — Anchor the finding to the mode

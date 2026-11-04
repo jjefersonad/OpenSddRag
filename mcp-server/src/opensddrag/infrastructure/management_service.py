@@ -60,6 +60,7 @@ def _project_out(project: Project) -> dict[str, Any]:
         "slug": project.slug,
         "description": project.description,
         "language": project.language,
+        "default_flow": project.default_flow,
         "created_at": _iso(project.created_at),
         "updated_at": _iso(project.updated_at),
     }
@@ -325,6 +326,7 @@ class SqlManagementService:
         name: str | None = None,
         description: str | None = None,
         language: str | None = None,
+        default_flow: str | None = None,
         new_slug: str | None = None,
     ) -> dict[str, Any]:
         await self._project_or_404(slug)
@@ -338,6 +340,7 @@ class SqlManagementService:
                 name=name,
                 description=description,
                 language=language,
+                default_flow=default_flow,
                 new_slug=new_slug,
             )
         except ValueError as exc:
@@ -430,18 +433,22 @@ class SqlManagementService:
         "Archive": "Close the change, record in history.",
     }
 
-    async def list_changes(self, slug: str, page: int = 1, page_size: int = 8) -> dict[str, Any]:
-        """One page of live changes, newest `updated_at` first (web-api REQ-011).
+    async def list_changes(self, slug: str, page: int = 1, page_size: int = 8, status: str = "live") -> dict[str, Any]:
+        """One page of changes, newest `updated_at` first (web-api REQ-011).
 
-        Liveness, phase and task progress come from `core.domain.change_progress`
-        (project-management REQ-005/006/007): synced main specs never keep a
-        change live, phases are progress-based, archived tasks count as done.
-        The page is applied after that derivation. `total` is the full count.
+        `status="live"` (default) lists only live changes; `status="all"` also
+        includes archived/non-live history with each change's last reached stage
+        (dashboard-flows REQ-003). Liveness, phase and task progress come from
+        `core.domain.change_progress` (project-management REQ-005/006/007).
         """
         project = await self._project_or_404(slug)
         artifacts = await repository.list_artifacts(project.id)
         lifecycles = await _lifecycle_by_flow()
-        live = change_progress.group_live_changes([_from_artifact(a) for a in artifacts])
+        models = [_from_artifact(a) for a in artifacts]
+        if status == "all":
+            live = change_progress.group_all_changes(models)
+        else:
+            live = change_progress.group_live_changes(models)
         raw_by_name: dict[str, list[Artifact]] = {}
         for artifact in artifacts:
             change_name = (artifact.metadata or {}).get("change_name")

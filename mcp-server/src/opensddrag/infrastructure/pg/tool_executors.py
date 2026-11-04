@@ -583,6 +583,27 @@ async def register_flow(
     return await _register_flow(manifest)
 
 
+async def set_project_default_flow(
+    args: dict, *, project_id: UUID | None, caller_id: str, conn
+) -> Any:
+    """Set a project's `default_flow` (flow-tagging REQ-002).
+
+    Thin MCP wrapper over `project_repository.update_project` so the CLI can
+    align a project's default flow using the MCP API key (the management REST
+    PATCH needs the management token, which the CLI does not hold).
+    """
+    slug = str(args.get("project_slug") or "").strip()
+    flow = str(args.get("flow") or "").strip()
+    if not slug:
+        return {"error": "Parameter 'project_slug' is required."}
+    if not flow:
+        return {"error": "Parameter 'flow' is required."}
+    project = await project_repository.update_project(slug, default_flow=flow)
+    if project is None:
+        return {"error": f"project {slug!r} not found"}
+    return {"slug": project.slug, "default_flow": project.default_flow}
+
+
 # ─── OpenSpec Import ──────────────────────────────────────────────────────────
 
 
@@ -637,6 +658,7 @@ EXECUTORS: dict[str, ExecutorFn] = {
     "list_projects": list_projects,
     "create_project": create_project,
     "register_flow": register_flow,
+    "set_project_default_flow": set_project_default_flow,
     "openspec_import": openspec_import,
 }
 
